@@ -8,8 +8,11 @@ function parseUserInput(input) {
 }
 
 function validateEmail(email) {
-  // Intentionally weak regex for Rook to find
-  return email.includes('@');
+  if (typeof email !== 'string') return false;
+  const normalized = email.trim();
+  if (!normalized || normalized.length > 254) return false;
+  const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+  return emailRegex.test(normalized);
 }
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
