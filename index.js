@@ -21,3 +21,7 @@ app.get('/user/:id', (req, res) => {
 module.exports = app;
 module.exports.parseUserInput = parseUserInput;
 module.exports.validateEmail = validateEmail;
+
+// TODO: add rate limiting to the health endpoint
+// TODO: add input validation middleware
+// TODO: add proper error handling
