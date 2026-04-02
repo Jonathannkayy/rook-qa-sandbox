@@ -2,10 +2,12 @@ const assert = require('assert');
 
 // Basic test suite
 function testParseUserInput() {
-  // This test will fail because of the null bug
   const { parseUserInput } = require('./index');
   assert.strictEqual(parseUserInput('Hello'), 'hello');
   assert.strictEqual(parseUserInput(' World '), 'world');
+  assert.strictEqual(parseUserInput(null), '');
+  assert.strictEqual(parseUserInput(undefined), '');
+  assert.strictEqual(parseUserInput(''), '');
   console.log('PASS: parseUserInput');
 }
 

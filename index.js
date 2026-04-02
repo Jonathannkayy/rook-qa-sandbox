@@ -3,8 +3,8 @@ const express = require('express');
 const app = express();
 
 function parseUserInput(input) {
-  // BUG: doesn't handle null input
-  return input.trim().toLowerCase();
+  if (input == null) return '';
+  return String(input).trim().toLowerCase();
 }
 
 function validateEmail(email) {
@@ -19,3 +19,5 @@ app.get('/user/:id', (req, res) => {
 });
 
 module.exports = app;
+module.exports.parseUserInput = parseUserInput;
+module.exports.validateEmail = validateEmail;
