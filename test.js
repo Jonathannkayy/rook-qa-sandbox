@@ -19,6 +19,15 @@ function testValidateEmail() {
   console.log('PASS: validateEmail');
 }
 
+function testValidateName() {
+  const { validateName } = require('./index');
+  assert.strictEqual(validateName('Jane Doe'), true);
+  assert.strictEqual(validateName(' J '), false);
+  assert.strictEqual(validateName(''), false);
+  assert.strictEqual(validateName(null), false);
+  console.log('PASS: validateName');
+}
+
 function testHealthEndpoint() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
@@ -44,6 +53,156 @@ function testHealthEndpoint() {
         server.close();
         reject(err);
       });
+    });
+  });
+}
+
+function testVersionEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/version`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.version, '1.0.0');
+            console.log('PASS: version endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function postJson(port, path, payload) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: 'localhost',
+      port,
+      path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ res, body: JSON.parse(data) }));
+    });
+    req.on('error', reject);
+    req.write(JSON.stringify(payload));
+    req.end();
+  });
+}
+
+function testValidateEndpointSuccess() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/validate', {
+          email: 'Test@Example.com',
+          name: 'Jane Doe'
+        });
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(body.valid, true);
+        assert.strictEqual(body.email, 'test@example.com');
+        assert.strictEqual(body.name, 'Jane Doe');
+        console.log('PASS: validate endpoint success');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testValidateEndpointInvalidEmail() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/validate', {
+          email: 'bad-email',
+          name: 'Jane Doe'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.valid, false);
+        assert.strictEqual(body.errors.email, 'Invalid email');
+        assert.strictEqual(body.errors.name, null);
+        console.log('PASS: validate endpoint invalid email');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testValidateEndpointInvalidName() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/validate', {
+          email: 'test@example.com',
+          name: ' '
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.valid, false);
+        assert.strictEqual(body.errors.email, null);
+        assert.strictEqual(body.errors.name, 'Invalid name');
+        console.log('PASS: validate endpoint invalid name');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testValidateEndpointInvalidBoth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/validate', {
+          email: null,
+          name: ''
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.valid, false);
+        assert.strictEqual(body.errors.email, 'Invalid email');
+        assert.strictEqual(body.errors.name, 'Invalid name');
+        console.log('PASS: validate endpoint invalid both');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
     });
   });
 }
@@ -168,14 +327,256 @@ function testCustomStatusCodeError() {
   });
 }
 
+function testRequestLoggerExport() {
+  const { requestLogger } = require('./index');
+  assert.strictEqual(typeof requestLogger, 'function');
+  assert.strictEqual(requestLogger.length, 3); // (req, res, next)
+  console.log('PASS: requestLogger export');
+}
+
+function testRequestLoggerMiddleware() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/health`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            // If logger broke the chain, we wouldn't get 200
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.status, 'ok');
+            console.log('PASS: requestLogger middleware');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testRequestLoggerCallsNext() {
+  const { requestLogger } = require('./index');
+  return new Promise((resolve, reject) => {
+    const fakeReq = { method: 'GET', originalUrl: '/test' };
+    const listeners = {};
+    const fakeRes = {
+      on(event, cb) { listeners[event] = cb; },
+      statusCode: 200
+    };
+    let nextCalled = false;
+    requestLogger(fakeReq, fakeRes, () => { nextCalled = true; });
+    try {
+      assert.strictEqual(nextCalled, true, 'next() must be called');
+      assert.strictEqual(typeof listeners.finish, 'function', 'finish listener must be registered');
+      console.log('PASS: requestLogger calls next');
+      resolve();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function testRequestLoggerLogsOnFinish() {
+  const { requestLogger } = require('./index');
+  return new Promise((resolve, reject) => {
+    const fakeReq = { method: 'POST', originalUrl: '/data' };
+    const listeners = {};
+    const fakeRes = {
+      on(event, cb) { listeners[event] = cb; },
+      statusCode: 201
+    };
+    const origLog = console.log;
+    const origEnv = process.env.NODE_ENV;
+    let loggedMessage = null;
+    try {
+      process.env.NODE_ENV = 'development';
+      console.log = (msg) => { loggedMessage = msg; };
+      requestLogger(fakeReq, fakeRes, () => {});
+      assert.ok(listeners.finish, 'finish listener must exist');
+      listeners.finish();
+      assert.ok(loggedMessage !== null, 'must log a message');
+      assert.ok(loggedMessage.includes('POST'), 'log must contain method');
+      assert.ok(loggedMessage.includes('/data'), 'log must contain url');
+      assert.ok(loggedMessage.includes('201'), 'log must contain status code');
+      assert.ok(/\d+ms/.test(loggedMessage), 'log must contain duration in ms');
+      console.log = origLog;
+      console.log('PASS: requestLogger logs on finish');
+      resolve();
+    } catch (err) {
+      console.log = origLog;
+      reject(err);
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+}
+
+function testRequestLoggerSilentInTest() {
+  const { requestLogger } = require('./index');
+  return new Promise((resolve, reject) => {
+    const fakeReq = { method: 'GET', originalUrl: '/quiet' };
+    const listeners = {};
+    const fakeRes = {
+      on(event, cb) { listeners[event] = cb; },
+      statusCode: 200
+    };
+    const origLog = console.log;
+    const origEnv = process.env.NODE_ENV;
+    let logCalled = false;
+    try {
+      process.env.NODE_ENV = 'test';
+      console.log = () => { logCalled = true; };
+      requestLogger(fakeReq, fakeRes, () => {});
+      listeners.finish();
+      console.log = origLog;
+      assert.strictEqual(logCalled, false, 'must NOT log when NODE_ENV=test');
+      console.log('PASS: requestLogger silent in test env');
+      resolve();
+    } catch (err) {
+      console.log = origLog;
+      reject(err);
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+}
+
+function testMetricsEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/metrics`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(typeof body.uptime, 'number');
+            assert.ok(body.uptime >= 0, 'uptime must be non-negative');
+            assert.strictEqual(typeof body.requestCount, 'number');
+            assert.ok(body.requestCount >= 1, 'requestCount must be at least 1');
+            assert.strictEqual(typeof body.memoryUsage, 'object');
+            assert.ok(body.memoryUsage.rss > 0, 'rss must be positive');
+            assert.ok(body.memoryUsage.heapTotal > 0, 'heapTotal must be positive');
+            assert.ok(body.memoryUsage.heapUsed > 0, 'heapUsed must be positive');
+            console.log('PASS: metrics endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testReadyEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/ready`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.ready, true);
+            assert.ok(Array.isArray(body.checks), 'checks must be an array');
+            assert.ok(body.checks.length >= 1, 'must have at least one check');
+            assert.ok(body.checks.every(c => c.ready === true), 'all checks must be ready');
+            console.log('PASS: ready endpoint (200)');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testReadyEndpointUnhealthy() {
+  const app = require('./index');
+  const { addDependencyCheck } = require('./index');
+  // Add a failing dependency check
+  addDependencyCheck('failing-dep', async () => false);
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/ready`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 503);
+            assert.strictEqual(body.ready, false);
+            assert.ok(Array.isArray(body.checks), 'checks must be an array');
+            const failingCheck = body.checks.find(c => c.name === 'failing-dep');
+            assert.ok(failingCheck, 'must include failing-dep check');
+            assert.strictEqual(failingCheck.ready, false);
+            console.log('PASS: ready endpoint (503)');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
     testValidateEmail();
+    testValidateName();
+    testRequestLoggerExport();
     await testHealthEndpoint();
+    await testVersionEndpoint();
+    await testValidateEndpointSuccess();
+    await testValidateEndpointInvalidEmail();
+    await testValidateEndpointInvalidName();
+    await testValidateEndpointInvalidBoth();
     await test404Handler();
     await testGlobalErrorHandler();
     await testCustomStatusCodeError();
+    await testRequestLoggerMiddleware();
+    await testRequestLoggerCallsNext();
+    await testRequestLoggerLogsOnFinish();
+    await testRequestLoggerSilentInTest();
+    await testMetricsEndpoint();
+    await testReadyEndpoint();
+    await testReadyEndpointUnhealthy();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
