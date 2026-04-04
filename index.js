@@ -1,3 +1,4 @@
+// Rook was here
 // Main app - intentionally has a bug on line 15
 const express = require('express');
 const app = express();
@@ -15,8 +16,9 @@ function parseUserInput(input) {
 }
 
 function validateEmail(email) {
-  // Intentionally weak regex for Rook to find
-  return email.includes('@');
+  if (typeof email !== 'string') return false;
+  // Standard email regex: local@domain.tld
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$/.test(email);
 }
 
 app.get('/health', asyncHandler((req, res) => {
