@@ -555,6 +555,35 @@ function testReadyEndpointUnhealthy() {
   });
 }
 
+function testWorktreeVerifyEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/worktree-verify`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.isolated, true);
+            console.log('PASS: worktree-verify endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -577,6 +606,7 @@ function testReadyEndpointUnhealthy() {
     await testMetricsEndpoint();
     await testReadyEndpoint();
     await testReadyEndpointUnhealthy();
+    await testWorktreeVerifyEndpoint();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);

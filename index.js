@@ -102,6 +102,10 @@ app.get('/metrics', asyncHandler((req, res) => {
   });
 }));
 
+app.get('/worktree-verify', asyncHandler((req, res) => {
+  res.json({ isolated: true });
+}));
+
 app.get('/ready', asyncHandler(async (req, res) => {
   const results = await Promise.allSettled(
     dependencyChecks.map(async (dep) => {
