@@ -128,11 +128,15 @@ app.get('/worktree-verify', asyncHandler((req, res) => {
 }));
 
 app.post('/comments', asyncHandler((req, res) => {
-  const { content, author } = req.body || {};
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'Request body is required' });
+  }
+
+  const { text, author } = req.body;
   const errors = {};
 
-  if (typeof content !== 'string' || content.trim().length === 0) {
-    errors.content = 'Content must be a non-empty string';
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    errors.text = 'Text must be a non-empty string';
   }
   if (typeof author !== 'string' || author.trim().length === 0) {
     errors.author = 'Author is required';
@@ -142,7 +146,7 @@ app.post('/comments', asyncHandler((req, res) => {
     return res.status(400).json({ error: 'Validation failed', errors });
   }
 
-  res.status(201).json({ content: content.trim(), author: author.trim() });
+  res.status(201).json({ text: text.trim(), author: author.trim() });
 }));
 
 app.get('/ready', asyncHandler(async (req, res) => {
