@@ -106,6 +106,24 @@ app.get('/worktree-verify', asyncHandler((req, res) => {
   res.json({ isolated: true });
 }));
 
+app.post('/comments', asyncHandler((req, res) => {
+  const { content, author } = req.body || {};
+  const errors = {};
+
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    errors.content = 'Content must be a non-empty string';
+  }
+  if (typeof author !== 'string' || author.trim().length === 0) {
+    errors.author = 'Author is required';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({ error: 'Validation failed', errors });
+  }
+
+  res.status(201).json({ content: content.trim(), author: author.trim() });
+}));
+
 app.get('/ready', asyncHandler(async (req, res) => {
   const results = await Promise.allSettled(
     dependencyChecks.map(async (dep) => {

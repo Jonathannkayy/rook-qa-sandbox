@@ -584,6 +584,172 @@ function testWorktreeVerifyEndpoint() {
   });
 }
 
+function testCommentsEndpointSuccess() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/comments', {
+          content: 'Great post!',
+          author: 'Alice'
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.content, 'Great post!');
+        assert.strictEqual(body.author, 'Alice');
+        console.log('PASS: comments endpoint success');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testCommentsEndpointMissingContent() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/comments', {
+          author: 'Alice'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
+        assert.strictEqual(body.errors.author, undefined);
+        console.log('PASS: comments endpoint missing content');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testCommentsEndpointEmptyContent() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/comments', {
+          content: '',
+          author: 'Alice'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
+        console.log('PASS: comments endpoint empty content');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testCommentsEndpointWhitespaceContent() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/comments', {
+          content: '   ',
+          author: 'Alice'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
+        console.log('PASS: comments endpoint whitespace content');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testCommentsEndpointMissingAuthor() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/comments', {
+          content: 'Nice article'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.errors.author, 'Author is required');
+        assert.strictEqual(body.errors.content, undefined);
+        console.log('PASS: comments endpoint missing author');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testCommentsEndpointMissingBoth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/comments', {});
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
+        assert.strictEqual(body.errors.author, 'Author is required');
+        console.log('PASS: comments endpoint missing both');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testCommentsEndpointTrimsFields() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/comments', {
+          content: '  Hello world  ',
+          author: '  Bob  '
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.content, 'Hello world');
+        assert.strictEqual(body.author, 'Bob');
+        console.log('PASS: comments endpoint trims fields');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -607,6 +773,13 @@ function testWorktreeVerifyEndpoint() {
     await testReadyEndpoint();
     await testReadyEndpointUnhealthy();
     await testWorktreeVerifyEndpoint();
+    await testCommentsEndpointSuccess();
+    await testCommentsEndpointMissingContent();
+    await testCommentsEndpointEmptyContent();
+    await testCommentsEndpointWhitespaceContent();
+    await testCommentsEndpointMissingAuthor();
+    await testCommentsEndpointMissingBoth();
+    await testCommentsEndpointTrimsFields();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
