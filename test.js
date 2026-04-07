@@ -41,6 +41,13 @@ function testHealthEndpoint() {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 200);
             assert.strictEqual(body.status, 'ok');
+            // Uptime fields
+            assert.strictEqual(typeof body.startedAt, 'string');
+            assert.ok(!isNaN(Date.parse(body.startedAt)), 'startedAt must be valid ISO date');
+            assert.strictEqual(typeof body.uptime_seconds, 'number');
+            assert.ok(body.uptime_seconds >= 0, 'uptime_seconds must be non-negative');
+            assert.strictEqual(typeof body.uptime, 'string');
+            assert.ok(body.uptime.endsWith('s'), 'uptime must end with seconds');
             console.log('PASS: health endpoint');
             resolve();
           } catch (err) {
@@ -55,6 +62,18 @@ function testHealthEndpoint() {
       });
     });
   });
+}
+
+function testFormatUptime() {
+  const { formatUptime } = require('./index');
+  assert.strictEqual(formatUptime(0), '0s');
+  assert.strictEqual(formatUptime(999), '0s');
+  assert.strictEqual(formatUptime(1000), '1s');
+  assert.strictEqual(formatUptime(61000), '1m 1s');
+  assert.strictEqual(formatUptime(3661000), '1h 1m 1s');
+  assert.strictEqual(formatUptime(90061000), '1d 1h 1m 1s');
+  assert.strictEqual(formatUptime(86400000), '1d 0s');
+  console.log('PASS: formatUptime');
 }
 
 function testVersionEndpoint() {
@@ -757,6 +776,7 @@ function testCommentsEndpointTrimsFields() {
     testValidateName();
     testRequestLoggerExport();
     await testHealthEndpoint();
+    testFormatUptime();
     await testVersionEndpoint();
     await testValidateEndpointSuccess();
     await testValidateEndpointInvalidEmail();

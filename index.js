@@ -59,11 +59,31 @@ function validateName(name) {
   return typeof name === 'string' && name.trim().length >= 2;
 }
 
+function formatUptime(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(' ');
+}
+
 app.get('/health', asyncHandler((req, res) => {
   if (Object.keys(req.query).length > 0) {
     return res.status(400).json({ error: 'Health endpoint does not accept query parameters' });
   }
-  res.json({ status: 'ok' });
+  const elapsedMs = Date.now() - startTime;
+  res.json({
+    status: 'ok',
+    startedAt: new Date(startTime).toISOString(),
+    uptime_seconds: Math.floor(elapsedMs / 1000),
+    uptime: formatUptime(elapsedMs)
+  });
 }));
 
 app.get('/version', asyncHandler((req, res) => {
@@ -161,6 +181,7 @@ module.exports.validateEmail = validateEmail;
 module.exports.validateName = validateName;
 module.exports.asyncHandler = asyncHandler;
 module.exports.requestLogger = requestLogger;
+module.exports.formatUptime = formatUptime;
 module.exports.getMetrics = () => ({
   uptime: Math.floor((Date.now() - startTime) / 1000),
   requestCount,
