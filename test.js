@@ -610,11 +610,11 @@ function testCommentsEndpointSuccess() {
       try {
         const port = server.address().port;
         const { res, body } = await postJson(port, '/comments', {
-          content: 'Great post!',
+          text: 'Great post!',
           author: 'Alice'
         });
         assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(body.content, 'Great post!');
+        assert.strictEqual(body.text, 'Great post!');
         assert.strictEqual(body.author, 'Alice');
         console.log('PASS: comments endpoint success');
         resolve();
@@ -627,7 +627,46 @@ function testCommentsEndpointSuccess() {
   });
 }
 
-function testCommentsEndpointMissingContent() {
+function testCommentsEndpointEmptyBody() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const req = http.request({
+          hostname: 'localhost',
+          port,
+          path: '/comments',
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' }
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const body = JSON.parse(data);
+              assert.strictEqual(res.statusCode, 400);
+              assert.strictEqual(body.error, 'Request body is required');
+              console.log('PASS: comments endpoint empty body');
+              resolve();
+            } catch (err) {
+              reject(err);
+            } finally {
+              server.close();
+            }
+          });
+        });
+        req.on('error', (err) => { server.close(); reject(err); });
+        req.end();
+      } catch (err) {
+        server.close();
+        reject(err);
+      }
+    });
+  });
+}
+
+function testCommentsEndpointMissingText() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
@@ -638,9 +677,9 @@ function testCommentsEndpointMissingContent() {
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
+        assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
         assert.strictEqual(body.errors.author, undefined);
-        console.log('PASS: comments endpoint missing content');
+        console.log('PASS: comments endpoint missing text');
         resolve();
       } catch (err) {
         reject(err);
@@ -651,20 +690,20 @@ function testCommentsEndpointMissingContent() {
   });
 }
 
-function testCommentsEndpointEmptyContent() {
+function testCommentsEndpointEmptyText() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { res, body } = await postJson(port, '/comments', {
-          content: '',
+          text: '',
           author: 'Alice'
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
-        console.log('PASS: comments endpoint empty content');
+        assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
+        console.log('PASS: comments endpoint empty text');
         resolve();
       } catch (err) {
         reject(err);
@@ -675,20 +714,20 @@ function testCommentsEndpointEmptyContent() {
   });
 }
 
-function testCommentsEndpointWhitespaceContent() {
+function testCommentsEndpointWhitespaceText() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { res, body } = await postJson(port, '/comments', {
-          content: '   ',
+          text: '   ',
           author: 'Alice'
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
-        console.log('PASS: comments endpoint whitespace content');
+        assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
+        console.log('PASS: comments endpoint whitespace text');
         resolve();
       } catch (err) {
         reject(err);
@@ -706,12 +745,12 @@ function testCommentsEndpointMissingAuthor() {
       try {
         const port = server.address().port;
         const { res, body } = await postJson(port, '/comments', {
-          content: 'Nice article'
+          text: 'Nice article'
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
         assert.strictEqual(body.errors.author, 'Author is required');
-        assert.strictEqual(body.errors.content, undefined);
+        assert.strictEqual(body.errors.text, undefined);
         console.log('PASS: comments endpoint missing author');
         resolve();
       } catch (err) {
@@ -732,7 +771,7 @@ function testCommentsEndpointMissingBoth() {
         const { res, body } = await postJson(port, '/comments', {});
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.errors.content, 'Content must be a non-empty string');
+        assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
         assert.strictEqual(body.errors.author, 'Author is required');
         console.log('PASS: comments endpoint missing both');
         resolve();
@@ -752,11 +791,11 @@ function testCommentsEndpointTrimsFields() {
       try {
         const port = server.address().port;
         const { res, body } = await postJson(port, '/comments', {
-          content: '  Hello world  ',
+          text: '  Hello world  ',
           author: '  Bob  '
         });
         assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(body.content, 'Hello world');
+        assert.strictEqual(body.text, 'Hello world');
         assert.strictEqual(body.author, 'Bob');
         console.log('PASS: comments endpoint trims fields');
         resolve();
@@ -794,9 +833,10 @@ function testCommentsEndpointTrimsFields() {
     await testReadyEndpointUnhealthy();
     await testWorktreeVerifyEndpoint();
     await testCommentsEndpointSuccess();
-    await testCommentsEndpointMissingContent();
-    await testCommentsEndpointEmptyContent();
-    await testCommentsEndpointWhitespaceContent();
+    await testCommentsEndpointEmptyBody();
+    await testCommentsEndpointMissingText();
+    await testCommentsEndpointEmptyText();
+    await testCommentsEndpointWhitespaceText();
     await testCommentsEndpointMissingAuthor();
     await testCommentsEndpointMissingBoth();
     await testCommentsEndpointTrimsFields();
