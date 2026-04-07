@@ -82,7 +82,8 @@ app.get('/health', asyncHandler((req, res) => {
     status: 'ok',
     startedAt: new Date(startTime).toISOString(),
     uptime_seconds: Math.floor(elapsedMs / 1000),
-    uptime: formatUptime(elapsedMs)
+    uptime: formatUptime(elapsedMs),
+    process_uptime: process.uptime()
   });
 }));
 

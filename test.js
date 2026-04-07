@@ -48,6 +48,8 @@ function testHealthEndpoint() {
             assert.ok(body.uptime_seconds >= 0, 'uptime_seconds must be non-negative');
             assert.strictEqual(typeof body.uptime, 'string');
             assert.ok(body.uptime.endsWith('s'), 'uptime must end with seconds');
+            assert.strictEqual(typeof body.process_uptime, 'number');
+            assert.ok(body.process_uptime >= 0, 'process_uptime must be non-negative');
             console.log('PASS: health endpoint');
             resolve();
           } catch (err) {
