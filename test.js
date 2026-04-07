@@ -240,8 +240,9 @@ function test404Handler() {
           try {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 404);
-            assert.strictEqual(body.error, 'Not Found');
-            assert.ok(body.message.includes('Cannot GET'));
+            assert.strictEqual(res.headers['content-type'].includes('application/json'), true, 'Content-Type must be application/json');
+            assert.strictEqual(body.error, 'Not found');
+            assert.strictEqual(body.message, undefined, 'should not include message field');
             console.log('PASS: 404 handler');
             resolve();
           } catch (err) {
