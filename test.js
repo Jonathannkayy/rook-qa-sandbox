@@ -617,6 +617,7 @@ function testMetricsEndpoint() {
           try {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 200);
+            assert.ok(res.headers['content-type'].includes('application/json'), 'Content-Type must be application/json');
             assert.strictEqual(typeof body.uptime, 'number');
             assert.ok(body.uptime >= 0, 'uptime must be non-negative');
             assert.strictEqual(typeof body.requestCount, 'number');
