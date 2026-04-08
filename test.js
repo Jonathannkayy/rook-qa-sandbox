@@ -1512,6 +1512,85 @@ function testCompletionTestEndpoint() {
   });
 }
 
+function deleteRequest(port, path) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: 'localhost',
+      port,
+      path,
+      method: 'DELETE'
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ res, body: JSON.parse(data) }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function testDeleteCacheEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await deleteRequest(port, '/cache');
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(body.cleared, true);
+        console.log('PASS: DELETE /cache endpoint');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testDeleteCacheResetsMetrics() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        // Make a request to bump counters
+        await new Promise((res, rej) => {
+          http.get(`http://localhost:${port}/health`, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => res());
+          }).on('error', rej);
+        });
+        // Clear cache
+        await deleteRequest(port, '/cache');
+        // Check metrics are reset
+        const metricsResp = await new Promise((res, rej) => {
+          http.get(`http://localhost:${port}/metrics`, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => res(JSON.parse(d)));
+          }).on('error', rej);
+        });
+        // requestCount should be 1 (only the /metrics request after clear)
+        // The DELETE /cache and the /metrics request both increment,
+        // but the clear happens during DELETE, so after clear: DELETE incremented before clear ran in handler,
+        // actually the middleware increments before the handler runs, so:
+        // After clear: /metrics request adds 1, so requestCount = 1
+        assert.strictEqual(metricsResp.requestCount, 1, 'requestCount should be 1 after cache clear');
+        assert.strictEqual(metricsResp.avgResponseTime >= 0, true, 'avgResponseTime must be non-negative');
+        console.log('PASS: DELETE /cache resets metrics');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -1565,6 +1644,8 @@ function testCompletionTestEndpoint() {
     await testCorrelationIdOn404();
     await testCorrelationIdUnique();
     await testCompletionTestEndpoint();
+    await testDeleteCacheEndpoint();
+    await testDeleteCacheResetsMetrics();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
