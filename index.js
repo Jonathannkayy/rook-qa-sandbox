@@ -264,6 +264,15 @@ app.get('/manual-test', asyncHandler((req, res) => {
   res.json({ manual: true });
 }));
 
+app.get('/time', asyncHandler((req, res) => {
+  const now = new Date();
+  res.json({
+    iso: now.toISOString(),
+    unix: Math.floor(now.getTime() / 1000),
+    epochMs: now.getTime()
+  });
+}));
+
 // 404 handler - must be after all routes
 app.use((req, res, next) => {
   res.status(404).json(createErrorResponse(404, 'Not Found', 'NOT_FOUND', { path: req.path }));
