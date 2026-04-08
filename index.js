@@ -10,6 +10,7 @@ app.use(express.json());
 const startTime = Date.now();
 let requestCount = 0;
 let totalResponseTime = 0;
+const bookmarks = [];
 
 // Dependency checks for readiness probe
 const dependencyChecks = [
@@ -238,6 +239,34 @@ app.post('/comments', asyncHandler((req, res) => {
   }
 
   res.status(201).json({ text: text.trim(), author: author.trim() });
+}));
+
+app.post('/bookmarks', asyncHandler((req, res) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json(createErrorResponse(400, 'Request body is required', 'BAD_REQUEST'));
+  }
+
+  const { url, title } = req.body;
+  const errors = {};
+
+  if (typeof url !== 'string' || url.trim().length === 0) {
+    errors.url = 'URL must be a non-empty string';
+  }
+  if (typeof title !== 'string' || title.trim().length === 0) {
+    errors.title = 'Title must be a non-empty string';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json(createErrorResponse(400, 'Validation failed', 'VALIDATION_ERROR', { errors }));
+  }
+
+  const bookmark = {
+    url: url.trim(),
+    title: title.trim(),
+    created_at: new Date().toISOString()
+  };
+  bookmarks.push(bookmark);
+  res.status(201).json(bookmark);
 }));
 
 app.get('/ready', asyncHandler(async (req, res) => {

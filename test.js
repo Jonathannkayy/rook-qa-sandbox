@@ -1633,6 +1633,36 @@ function testVersionInfoEndpoint() {
   });
 }
 
+function testBookmarksEndpointCreatedAt() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const before = new Date().toISOString();
+        const { res, body } = await postJson(port, '/bookmarks', {
+          url: 'https://example.com',
+          title: 'Example Site'
+        });
+        const after = new Date().toISOString();
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.url, 'https://example.com');
+        assert.strictEqual(body.title, 'Example Site');
+        assert.strictEqual(typeof body.created_at, 'string', 'created_at must be a string');
+        assert.ok(!isNaN(Date.parse(body.created_at)), 'created_at must be a valid ISO date');
+        assert.ok(body.created_at >= before, 'created_at must not be before the request');
+        assert.ok(body.created_at <= after, 'created_at must not be after the response');
+        console.log('PASS: bookmarks endpoint created_at');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -1689,6 +1719,7 @@ function testVersionInfoEndpoint() {
     await testDeleteCacheEndpoint();
     await testDeleteCacheResetsMetrics();
     await testVersionInfoEndpoint();
+    await testBookmarksEndpointCreatedAt();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
