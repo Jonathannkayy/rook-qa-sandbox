@@ -738,6 +738,36 @@ function testWorktreeVerifyEndpoint() {
   });
 }
 
+function testArchTestEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/arch-test`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.architecture, 'event-bus');
+            assert.strictEqual(body.status, 'verified');
+            console.log('PASS: arch-test endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
 function testCommentsEndpointSuccess() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
@@ -1232,6 +1262,7 @@ function testErrorShapeOnThrow() {
     await testReadyEndpoint();
     await testReadyEndpointUnhealthy();
     await testWorktreeVerifyEndpoint();
+    await testArchTestEndpoint();
     await testCommentsEndpointSuccess();
     await testCommentsEndpointEmptyBody();
     await testCommentsEndpointMissingText();
