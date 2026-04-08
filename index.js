@@ -264,6 +264,10 @@ app.get('/manual-test', asyncHandler((req, res) => {
   res.json({ manual: true });
 }));
 
+app.get('/ping', asyncHandler((req, res) => {
+  res.send('pong');
+}));
+
 // 404 handler - must be after all routes
 app.use((req, res, next) => {
   res.status(404).json(createErrorResponse(404, 'Not Found', 'NOT_FOUND', { path: req.path }));
