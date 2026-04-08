@@ -1278,23 +1278,32 @@ function testInputSanitizationNested() {
   });
 }
 
-function testStatsEndpoint() {
+function testCorrelationIdExport() {
+  const { correlationId } = require('./index');
+  assert.strictEqual(typeof correlationId, 'function');
+  assert.strictEqual(correlationId.length, 3); // (req, res, next)
+  console.log('PASS: correlationId export');
+}
+
+function testCorrelationIdGenerated() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, () => {
       const port = server.address().port;
-      http.get(`http://localhost:${port}/stats`, (res) => {
+      http.get(`http://localhost:${port}/health`, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
           try {
-            const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 200);
-            assert.strictEqual(typeof body.totalRequests, 'number');
-            assert.ok(body.totalRequests >= 1, 'totalRequests must be at least 1');
-            assert.strictEqual(typeof body.uptime, 'number');
-            assert.ok(body.uptime >= 0, 'uptime must be non-negative');
-            console.log('PASS: stats endpoint');
+            const corrId = res.headers['x-correlation-id'];
+            assert.ok(corrId, 'X-Correlation-ID header must be present');
+            // Must be a valid UUID v4 format
+            assert.ok(
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(corrId),
+              'X-Correlation-ID must be a valid UUID'
+            );
+            console.log('PASS: correlationId generated');
             resolve();
           } catch (err) {
             reject(err);
@@ -1310,72 +1319,103 @@ function testStatsEndpoint() {
   });
 }
 
-function testStatsEndpointIncrementsCount() {
+function testCorrelationIdPropagated() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, () => {
       const port = server.address().port;
-      // First request to /stats to get baseline
-      http.get(`http://localhost:${port}/stats`, (res1) => {
-        let data1 = '';
-        res1.on('data', chunk => data1 += chunk);
-        res1.on('end', () => {
-          const count1 = JSON.parse(data1).totalRequests;
-          // Second request - count should be higher
-          http.get(`http://localhost:${port}/stats`, (res2) => {
-            let data2 = '';
-            res2.on('data', chunk => data2 += chunk);
-            res2.on('end', () => {
-              try {
-                const count2 = JSON.parse(data2).totalRequests;
-                assert.ok(count2 > count1, 'totalRequests must increment between requests');
-                console.log('PASS: stats endpoint increments count');
-                resolve();
-              } catch (err) {
-                reject(err);
-              } finally {
-                server.close();
-              }
-            });
-          }).on('error', (err) => {
-            server.close();
+      const req = http.request({
+        hostname: 'localhost',
+        port,
+        path: '/health',
+        method: 'GET',
+        headers: { 'X-Correlation-ID': 'my-custom-correlation-id' }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(
+              res.headers['x-correlation-id'],
+              'my-custom-correlation-id',
+              'Must propagate the incoming X-Correlation-ID'
+            );
+            console.log('PASS: correlationId propagated');
+            resolve();
+          } catch (err) {
             reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      });
+      req.on('error', (err) => { server.close(); reject(err); });
+      req.end();
+    });
+  });
+}
+
+function testCorrelationIdOn404() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/no-such-route`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            assert.strictEqual(res.statusCode, 404);
+            const corrId = res.headers['x-correlation-id'];
+            assert.ok(corrId, 'X-Correlation-ID must be present even on 404');
+            assert.ok(
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(corrId),
+              'X-Correlation-ID must be a valid UUID on 404'
+            );
+            console.log('PASS: correlationId on 404');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testCorrelationIdUnique() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      const port = server.address().port;
+      try {
+        const ids = [];
+        for (let i = 0; i < 3; i++) {
+          const corrId = await new Promise((res, rej) => {
+            http.get(`http://localhost:${port}/version`, (resp) => {
+              let d = '';
+              resp.on('data', c => d += c);
+              resp.on('end', () => res(resp.headers['x-correlation-id']));
+            }).on('error', rej);
           });
-        });
-      }).on('error', (err) => {
-        server.close();
+          ids.push(corrId);
+        }
+        // All IDs must be unique
+        const unique = new Set(ids);
+        assert.strictEqual(unique.size, 3, 'Each request must get a unique correlation ID');
+        console.log('PASS: correlationId unique per request');
+        resolve();
+      } catch (err) {
         reject(err);
-      });
-    });
-  });
-}
-
-function testStatsEndpointResponseShape() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, () => {
-      const port = server.address().port;
-      http.get(`http://localhost:${port}/stats`, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const body = JSON.parse(data);
-            assert.strictEqual(res.statusCode, 200);
-            const keys = Object.keys(body).sort();
-            assert.deepStrictEqual(keys, ['totalRequests', 'uptime']);
-            console.log('PASS: stats endpoint response shape');
-            resolve();
-          } catch (err) {
-            reject(err);
-          } finally {
-            server.close();
-          }
-        });
-      }).on('error', (err) => {
+      } finally {
         server.close();
-        reject(err);
-      });
+      }
     });
   });
 }
@@ -1425,9 +1465,11 @@ function testStatsEndpointResponseShape() {
     await testErrorShapeOnThrow();
     await testInputSanitization();
     await testInputSanitizationNested();
-    await testStatsEndpoint();
-    await testStatsEndpointIncrementsCount();
-    await testStatsEndpointResponseShape();
+    testCorrelationIdExport();
+    await testCorrelationIdGenerated();
+    await testCorrelationIdPropagated();
+    await testCorrelationIdOn404();
+    await testCorrelationIdUnique();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);

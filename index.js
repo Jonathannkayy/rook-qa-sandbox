@@ -33,6 +33,15 @@ function requestLogger(req, res, next) {
 }
 app.use(requestLogger);
 
+// Correlation ID middleware - assigns or propagates X-Correlation-ID on every response
+const crypto = require('crypto');
+function correlationId(req, res, next) {
+  const id = req.headers['x-correlation-id'] || crypto.randomUUID();
+  res.setHeader('X-Correlation-ID', id);
+  next();
+}
+app.use(correlationId);
+
 // Request counter and response time tracking middleware
 app.use((req, res, next) => {
   const start = Date.now();
@@ -268,3 +277,4 @@ module.exports.addDependencyCheck = addDependencyCheck;
 module.exports.rateLimiter = rateLimiter;
 module.exports.getRequestCount = () => requestCount;
 module.exports.createErrorResponse = createErrorResponse;
+module.exports.correlationId = correlationId;
