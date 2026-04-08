@@ -252,6 +252,10 @@ app.get('/completion-test', asyncHandler((req, res) => {
   res.json({ completed: true, method: 'metadata' });
 }));
 
+app.get('/pty-fix-test', asyncHandler((req, res) => {
+  res.json({ pty: 'fixed', timestamp: Date.now() });
+}));
+
 // 404 handler - must be after all routes
 app.use((req, res, next) => {
   res.status(404).json(createErrorResponse(404, 'Not Found', 'NOT_FOUND', { path: req.path }));
