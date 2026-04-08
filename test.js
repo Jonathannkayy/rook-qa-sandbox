@@ -1512,22 +1512,21 @@ function testCompletionTestEndpoint() {
   });
 }
 
-function testRandomEndpoint() {
+function testHostnameEndpoint() {
   const app = require('./index');
+  const os = require('os');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, () => {
       const port = server.address().port;
-      http.get(`http://localhost:${port}/random`, (res) => {
+      http.get(`http://localhost:${port}/hostname`, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
           try {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 200);
-            assert.strictEqual(typeof body.value, 'number');
-            assert.ok(body.value >= 0, 'value must be >= 0');
-            assert.ok(body.value < 1, 'value must be < 1');
-            console.log('PASS: random endpoint');
+            assert.strictEqual(body.hostname, os.hostname());
+            console.log('PASS: hostname endpoint');
             resolve();
           } catch (err) {
             reject(err);
@@ -1596,7 +1595,7 @@ function testRandomEndpoint() {
     await testCorrelationIdOn404();
     await testCorrelationIdUnique();
     await testCompletionTestEndpoint();
-    await testRandomEndpoint();
+    await testHostnameEndpoint();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
