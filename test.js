@@ -1278,6 +1278,108 @@ function testInputSanitizationNested() {
   });
 }
 
+function testStatsEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/stats`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(typeof body.totalRequests, 'number');
+            assert.ok(body.totalRequests >= 1, 'totalRequests must be at least 1');
+            assert.strictEqual(typeof body.uptime, 'number');
+            assert.ok(body.uptime >= 0, 'uptime must be non-negative');
+            console.log('PASS: stats endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testStatsEndpointIncrementsCount() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      // First request to /stats to get baseline
+      http.get(`http://localhost:${port}/stats`, (res1) => {
+        let data1 = '';
+        res1.on('data', chunk => data1 += chunk);
+        res1.on('end', () => {
+          const count1 = JSON.parse(data1).totalRequests;
+          // Second request - count should be higher
+          http.get(`http://localhost:${port}/stats`, (res2) => {
+            let data2 = '';
+            res2.on('data', chunk => data2 += chunk);
+            res2.on('end', () => {
+              try {
+                const count2 = JSON.parse(data2).totalRequests;
+                assert.ok(count2 > count1, 'totalRequests must increment between requests');
+                console.log('PASS: stats endpoint increments count');
+                resolve();
+              } catch (err) {
+                reject(err);
+              } finally {
+                server.close();
+              }
+            });
+          }).on('error', (err) => {
+            server.close();
+            reject(err);
+          });
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testStatsEndpointResponseShape() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/stats`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            const keys = Object.keys(body).sort();
+            assert.deepStrictEqual(keys, ['totalRequests', 'uptime']);
+            console.log('PASS: stats endpoint response shape');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -1323,6 +1425,9 @@ function testInputSanitizationNested() {
     await testErrorShapeOnThrow();
     await testInputSanitization();
     await testInputSanitizationNested();
+    await testStatsEndpoint();
+    await testStatsEndpointIncrementsCount();
+    await testStatsEndpointResponseShape();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
