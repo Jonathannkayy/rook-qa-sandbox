@@ -1,6 +1,5 @@
 // Rook was here
 // Main app - intentionally has a bug on line 15
-const os = require('os');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const app = express();
@@ -265,8 +264,10 @@ app.get('/manual-test', asyncHandler((req, res) => {
   res.json({ manual: true });
 }));
 
-app.get('/hostname', asyncHandler((req, res) => {
-  res.json({ hostname: os.hostname() });
+app.delete('/cache', asyncHandler((req, res) => {
+  requestCount = 0;
+  totalResponseTime = 0;
+  res.json({ cleared: true });
 }));
 
 // 404 handler - must be after all routes
