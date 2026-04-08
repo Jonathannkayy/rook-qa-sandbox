@@ -164,7 +164,9 @@ function testValidateEndpointInvalidEmail() {
           name: 'Jane Doe'
         });
         assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.valid, false);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.email, 'Invalid email');
         assert.strictEqual(body.errors.name, null);
         console.log('PASS: validate endpoint invalid email');
@@ -189,7 +191,9 @@ function testValidateEndpointInvalidName() {
           name: ' '
         });
         assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.valid, false);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.email, null);
         assert.strictEqual(body.errors.name, 'Invalid name');
         console.log('PASS: validate endpoint invalid name');
@@ -214,7 +218,9 @@ function testValidateEndpointInvalidBoth() {
           name: ''
         });
         assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.valid, false);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.email, 'Invalid email');
         assert.strictEqual(body.errors.name, 'Invalid name');
         console.log('PASS: validate endpoint invalid both');
@@ -243,6 +249,8 @@ function test404Handler() {
             assert.strictEqual(res.headers['content-type'].includes('application/json'), true, 'Content-Type must be application/json');
             assert.strictEqual(body.error, 'Not Found');
             assert.strictEqual(body.path, '/nonexistent');
+            assert.strictEqual(body.status, 404);
+            assert.strictEqual(body.code, 'NOT_FOUND');
             console.log('PASS: 404 handler');
             resolve();
           } catch (err) {
@@ -273,6 +281,8 @@ function test404HandlerWithDifferentPath() {
             assert.strictEqual(res.statusCode, 404);
             assert.strictEqual(body.error, 'Not Found');
             assert.strictEqual(body.path, '/some/deep/path');
+            assert.strictEqual(body.status, 404);
+            assert.strictEqual(body.code, 'NOT_FOUND');
             console.log('PASS: 404 handler with different path');
             resolve();
           } catch (err) {
@@ -309,6 +319,8 @@ function test404HandlerPost() {
             assert.strictEqual(res.statusCode, 404);
             assert.strictEqual(body.error, 'Not Found');
             assert.strictEqual(body.path, '/does-not-exist');
+            assert.strictEqual(body.status, 404);
+            assert.strictEqual(body.code, 'NOT_FOUND');
             console.log('PASS: 404 handler POST method');
             resolve();
           } catch (err) {
@@ -327,7 +339,7 @@ function test404HandlerPost() {
 function testGlobalErrorHandler() {
   const express = require('express');
   const testApp = express();
-  const { asyncHandler } = require('./index');
+  const { asyncHandler, createErrorResponse } = require('./index');
 
   // Add a route that throws
   testApp.get('/throw', asyncHandler((req, res) => {
@@ -339,7 +351,8 @@ function testGlobalErrorHandler() {
   testApp.use((err, req, res, next) => {
     const statusCode = err.statusCode || 500;
     const message = err.message || 'Internal Server Error';
-    res.status(statusCode).json({ error: message });
+    const code = err.code || 'INTERNAL_ERROR';
+    res.status(statusCode).json(createErrorResponse(statusCode, message, code));
   });
 
   return new Promise((resolve, reject) => {
@@ -353,6 +366,8 @@ function testGlobalErrorHandler() {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 500);
             assert.strictEqual(body.error, 'Test error');
+            assert.strictEqual(body.status, 500);
+            assert.strictEqual(body.code, 'INTERNAL_ERROR');
             console.log('PASS: global error handler');
             resolve();
           } catch (err) {
@@ -372,7 +387,7 @@ function testGlobalErrorHandler() {
 function testCustomStatusCodeError() {
   const express = require('express');
   const testApp = express();
-  const { asyncHandler } = require('./index');
+  const { asyncHandler, createErrorResponse } = require('./index');
 
   testApp.get('/bad-request', asyncHandler((req, res) => {
     const err = new Error('Invalid input');
@@ -384,7 +399,8 @@ function testCustomStatusCodeError() {
   testApp.use((err, req, res, next) => {
     const statusCode = err.statusCode || 500;
     const message = err.message || 'Internal Server Error';
-    res.status(statusCode).json({ error: message });
+    const code = err.code || 'INTERNAL_ERROR';
+    res.status(statusCode).json(createErrorResponse(statusCode, message, code));
   });
 
   return new Promise((resolve, reject) => {
@@ -398,6 +414,8 @@ function testCustomStatusCodeError() {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 400);
             assert.strictEqual(body.error, 'Invalid input');
+            assert.strictEqual(body.status, 400);
+            assert.strictEqual(body.code, 'INTERNAL_ERROR');
             console.log('PASS: custom status code error');
             resolve();
           } catch (err) {
@@ -715,6 +733,8 @@ function testCommentsEndpointEmptyBody() {
               const body = JSON.parse(data);
               assert.strictEqual(res.statusCode, 400);
               assert.strictEqual(body.error, 'Request body is required');
+              assert.strictEqual(body.status, 400);
+              assert.strictEqual(body.code, 'BAD_REQUEST');
               console.log('PASS: comments endpoint empty body');
               resolve();
             } catch (err) {
@@ -745,6 +765,8 @@ function testCommentsEndpointMissingText() {
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
         assert.strictEqual(body.errors.author, undefined);
         console.log('PASS: comments endpoint missing text');
@@ -770,6 +792,8 @@ function testCommentsEndpointEmptyText() {
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
         console.log('PASS: comments endpoint empty text');
         resolve();
@@ -794,6 +818,8 @@ function testCommentsEndpointWhitespaceText() {
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
         console.log('PASS: comments endpoint whitespace text');
         resolve();
@@ -817,6 +843,8 @@ function testCommentsEndpointMissingAuthor() {
         });
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.author, 'Author is required');
         assert.strictEqual(body.errors.text, undefined);
         console.log('PASS: comments endpoint missing author');
@@ -839,6 +867,8 @@ function testCommentsEndpointMissingBoth() {
         const { res, body } = await postJson(port, '/comments', {});
         assert.strictEqual(res.statusCode, 400);
         assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
         assert.strictEqual(body.errors.text, 'Text must be a non-empty string');
         assert.strictEqual(body.errors.author, 'Author is required');
         console.log('PASS: comments endpoint missing both');
@@ -866,6 +896,154 @@ function testCommentsEndpointTrimsFields() {
         assert.strictEqual(body.text, 'Hello world');
         assert.strictEqual(body.author, 'Bob');
         console.log('PASS: comments endpoint trims fields');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testCreateErrorResponseBasic() {
+  const { createErrorResponse } = require('./index');
+  const result = createErrorResponse(404, 'Not Found', 'NOT_FOUND');
+  assert.deepStrictEqual(result, { error: 'Not Found', status: 404, code: 'NOT_FOUND' });
+  console.log('PASS: createErrorResponse basic');
+}
+
+function testCreateErrorResponseWithExtra() {
+  const { createErrorResponse } = require('./index');
+  const result = createErrorResponse(400, 'Validation failed', 'VALIDATION_ERROR', { errors: { name: 'required' } });
+  assert.strictEqual(result.error, 'Validation failed');
+  assert.strictEqual(result.status, 400);
+  assert.strictEqual(result.code, 'VALIDATION_ERROR');
+  assert.strictEqual(result.errors.name, 'required');
+  console.log('PASS: createErrorResponse with extra');
+}
+
+function testCreateErrorResponseNoCode() {
+  const { createErrorResponse } = require('./index');
+  const result = createErrorResponse(500, 'Server error');
+  assert.strictEqual(result.error, 'Server error');
+  assert.strictEqual(result.status, 500);
+  assert.strictEqual(result.code, undefined);
+  console.log('PASS: createErrorResponse no code');
+}
+
+// Verify every error path returns the standard shape: { error: string, status: number }
+function assertStandardErrorShape(body, expectedStatus) {
+  assert.strictEqual(typeof body.error, 'string', 'error must be a string');
+  assert.strictEqual(typeof body.status, 'number', 'status must be a number');
+  assert.strictEqual(body.status, expectedStatus, `status must be ${expectedStatus}`);
+  if (body.code !== undefined) {
+    assert.strictEqual(typeof body.code, 'string', 'code must be a string when present');
+  }
+}
+
+function testErrorShapeConsistency() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+
+        // 404 - unknown route
+        const r404 = await new Promise((res, rej) => {
+          http.get(`http://localhost:${port}/unknown-route`, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => res({ status: resp.statusCode, body: JSON.parse(d) }));
+          }).on('error', rej);
+        });
+        assertStandardErrorShape(r404.body, 404);
+        assert.strictEqual(r404.body.code, 'NOT_FOUND');
+
+        // 400 - health with query params
+        const r400health = await new Promise((res, rej) => {
+          http.get(`http://localhost:${port}/health?foo=bar`, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => res({ status: resp.statusCode, body: JSON.parse(d) }));
+          }).on('error', rej);
+        });
+        assertStandardErrorShape(r400health.body, 400);
+        assert.strictEqual(r400health.body.code, 'BAD_REQUEST');
+
+        // 400 - validate with bad data
+        const r400validate = await postJson(port, '/validate', { email: 'bad', name: '' });
+        assertStandardErrorShape(r400validate.body, 400);
+        assert.strictEqual(r400validate.body.code, 'VALIDATION_ERROR');
+        assert.ok(r400validate.body.errors, 'validate errors must include errors detail');
+
+        // 400 - comments empty body
+        const r400comments = await postJson(port, '/comments', {});
+        assertStandardErrorShape(r400comments.body, 400);
+        assert.strictEqual(r400comments.body.code, 'VALIDATION_ERROR');
+
+        console.log('PASS: error shape consistency across all paths');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testErrorShapeOnThrow() {
+  const express = require('express');
+  const { asyncHandler, createErrorResponse } = require('./index');
+  const testApp = express();
+
+  testApp.get('/err-no-code', asyncHandler(() => { throw new Error('boom'); }));
+  testApp.get('/err-with-code', asyncHandler(() => {
+    const e = new Error('forbidden');
+    e.statusCode = 403;
+    e.code = 'FORBIDDEN';
+    throw e;
+  }));
+
+  // eslint-disable-next-line no-unused-vars
+  testApp.use((err, req, res, next) => {
+    const statusCode = err.statusCode || 500;
+    const message = err.message || 'Internal Server Error';
+    const code = err.code || 'INTERNAL_ERROR';
+    res.status(statusCode).json(createErrorResponse(statusCode, message, code));
+  });
+
+  return new Promise((resolve, reject) => {
+    const server = testApp.listen(0, async () => {
+      try {
+        const port = server.address().port;
+
+        // Default 500 with no custom code
+        const r500 = await new Promise((res, rej) => {
+          http.get(`http://localhost:${port}/err-no-code`, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => res({ status: resp.statusCode, body: JSON.parse(d) }));
+          }).on('error', rej);
+        });
+        assertStandardErrorShape(r500.body, 500);
+        assert.strictEqual(r500.body.code, 'INTERNAL_ERROR');
+        assert.strictEqual(r500.body.error, 'boom');
+
+        // Custom status + code
+        const r403 = await new Promise((res, rej) => {
+          http.get(`http://localhost:${port}/err-with-code`, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => res({ status: resp.statusCode, body: JSON.parse(d) }));
+          }).on('error', rej);
+        });
+        assertStandardErrorShape(r403.body, 403);
+        assert.strictEqual(r403.body.code, 'FORBIDDEN');
+        assert.strictEqual(r403.body.error, 'forbidden');
+
+        console.log('PASS: error shape on thrown errors');
         resolve();
       } catch (err) {
         reject(err);
@@ -910,6 +1088,11 @@ function testCommentsEndpointTrimsFields() {
     await testCommentsEndpointMissingAuthor();
     await testCommentsEndpointMissingBoth();
     await testCommentsEndpointTrimsFields();
+    testCreateErrorResponseBasic();
+    testCreateErrorResponseWithExtra();
+    testCreateErrorResponseNoCode();
+    await testErrorShapeConsistency();
+    await testErrorShapeOnThrow();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
