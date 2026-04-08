@@ -158,6 +158,11 @@ app.get('/version', asyncHandler((req, res) => {
   res.json({ version });
 }));
 
+app.get('/version-info', asyncHandler((req, res) => {
+  const { name, version } = require('./package.json');
+  res.json({ name, version });
+}));
+
 app.get('/user/:id', asyncHandler((req, res) => {
   const cleaned = parseUserInput(req.params.id);
   res.json({ user: cleaned });

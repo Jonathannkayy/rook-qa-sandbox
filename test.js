@@ -1591,6 +1591,36 @@ function testDeleteCacheResetsMetrics() {
   });
 }
 
+function testVersionInfoEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/version-info`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.name, 'rook-qa-sandbox');
+            assert.strictEqual(body.version, '1.0.0');
+            console.log('PASS: version-info endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -1646,6 +1676,7 @@ function testDeleteCacheResetsMetrics() {
     await testCompletionTestEndpoint();
     await testDeleteCacheEndpoint();
     await testDeleteCacheResetsMetrics();
+    await testVersionInfoEndpoint();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
