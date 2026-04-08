@@ -241,8 +241,8 @@ function test404Handler() {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 404);
             assert.strictEqual(res.headers['content-type'].includes('application/json'), true, 'Content-Type must be application/json');
-            assert.strictEqual(body.error, 'Not found');
-            assert.strictEqual(body.message, undefined, 'should not include message field');
+            assert.strictEqual(body.error, 'Not Found');
+            assert.strictEqual(body.path, '/nonexistent');
             console.log('PASS: 404 handler');
             resolve();
           } catch (err) {
@@ -255,6 +255,71 @@ function test404Handler() {
         server.close();
         reject(err);
       });
+    });
+  });
+}
+
+function test404HandlerWithDifferentPath() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/some/deep/path`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 404);
+            assert.strictEqual(body.error, 'Not Found');
+            assert.strictEqual(body.path, '/some/deep/path');
+            console.log('PASS: 404 handler with different path');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function test404HandlerPost() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      const req = http.request({
+        hostname: 'localhost',
+        port,
+        path: '/does-not-exist',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 404);
+            assert.strictEqual(body.error, 'Not Found');
+            assert.strictEqual(body.path, '/does-not-exist');
+            console.log('PASS: 404 handler POST method');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      });
+      req.on('error', (err) => { server.close(); reject(err); });
+      req.end();
     });
   });
 }
@@ -825,6 +890,8 @@ function testCommentsEndpointTrimsFields() {
     await testValidateEndpointInvalidName();
     await testValidateEndpointInvalidBoth();
     await test404Handler();
+    await test404HandlerWithDifferentPath();
+    await test404HandlerPost();
     await testGlobalErrorHandler();
     await testCustomStatusCodeError();
     await testRequestLoggerMiddleware();
