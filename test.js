@@ -738,6 +738,38 @@ function testWorktreeVerifyEndpoint() {
   });
 }
 
+function testPtyFixTestEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/pty-fix-test`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.pty, 'fixed');
+            assert.strictEqual(typeof body.timestamp, 'number');
+            assert.ok(body.timestamp > 0, 'timestamp must be positive');
+            assert.ok(body.timestamp <= Date.now(), 'timestamp must not be in the future');
+            console.log('PASS: pty-fix-test endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
 function testCommentsEndpointSuccess() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
@@ -1232,6 +1264,7 @@ function testErrorShapeOnThrow() {
     await testReadyEndpoint();
     await testReadyEndpointUnhealthy();
     await testWorktreeVerifyEndpoint();
+    await testPtyFixTestEndpoint();
     await testCommentsEndpointSuccess();
     await testCommentsEndpointEmptyBody();
     await testCommentsEndpointMissingText();
