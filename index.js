@@ -11,6 +11,7 @@ const startTime = Date.now();
 let requestCount = 0;
 let totalResponseTime = 0;
 const bookmarks = [];
+let nextBookmarkId = 1;
 
 // Dependency checks for readiness probe
 const dependencyChecks = [
@@ -261,12 +262,26 @@ app.post('/bookmarks', asyncHandler((req, res) => {
   }
 
   const bookmark = {
+    id: nextBookmarkId++,
     url: url.trim(),
     title: title.trim(),
     created_at: new Date().toISOString()
   };
   bookmarks.push(bookmark);
   res.status(201).json(bookmark);
+}));
+
+app.delete('/bookmarks/:id', asyncHandler((req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Invalid bookmark ID', 'BAD_REQUEST'));
+  }
+  const index = bookmarks.findIndex(b => b.id === id);
+  if (index === -1) {
+    return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
+  }
+  bookmarks.splice(index, 1);
+  res.status(204).end();
 }));
 
 app.get('/ready', asyncHandler(async (req, res) => {

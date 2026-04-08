@@ -1539,6 +1539,23 @@ function deleteRequest(port, path) {
     req.on('error', reject);
     req.end();
   });
+  }
+
+function deleteRequestRaw(port, path) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: 'localhost',
+      port,
+      path,
+      method: 'DELETE'
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ res, data }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 function testDeleteCacheEndpoint() {
@@ -1663,6 +1680,78 @@ function testBookmarksEndpointCreatedAt() {
   });
 }
 
+function testDeleteBookmarkSuccess() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        // Create a bookmark first
+        const { res: createRes, body: createBody } = await postJson(port, '/bookmarks', {
+          url: 'https://delete-me.com',
+          title: 'Delete Me'
+        });
+        assert.strictEqual(createRes.statusCode, 201);
+        assert.strictEqual(typeof createBody.id, 'number', 'bookmark must have numeric id');
+        // Delete it
+        const { res: delRes, data } = await deleteRequestRaw(port, `/bookmarks/${createBody.id}`);
+        assert.strictEqual(delRes.statusCode, 204, 'must return 204 on successful delete');
+        assert.strictEqual(data, '', 'body must be empty on 204');
+        console.log('PASS: DELETE /bookmarks/:id success');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testDeleteBookmarkNotFound() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await deleteRequest(port, '/bookmarks/99999');
+        assert.strictEqual(res.statusCode, 404, 'must return 404 for non-existent bookmark');
+        assert.strictEqual(body.error, 'Bookmark not found');
+        assert.strictEqual(body.status, 404);
+        assert.strictEqual(body.code, 'NOT_FOUND');
+        console.log('PASS: DELETE /bookmarks/:id not found');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testDeleteBookmarkInvalidId() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await deleteRequest(port, '/bookmarks/abc');
+        assert.strictEqual(res.statusCode, 400, 'must return 400 for invalid ID');
+        assert.strictEqual(body.error, 'Invalid bookmark ID');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: DELETE /bookmarks/:id invalid ID');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -1720,6 +1809,9 @@ function testBookmarksEndpointCreatedAt() {
     await testDeleteCacheResetsMetrics();
     await testVersionInfoEndpoint();
     await testBookmarksEndpointCreatedAt();
+    await testDeleteBookmarkSuccess();
+    await testDeleteBookmarkNotFound();
+    await testDeleteBookmarkInvalidId();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
