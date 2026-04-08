@@ -185,6 +185,12 @@ app.get('/worktree-verify', asyncHandler((req, res) => {
   res.json({ isolated: true });
 }));
 
+app.get('/env', asyncHandler((req, res) => {
+  res.json({
+    nodeEnv: process.env.NODE_ENV || 'undefined',
+    processVersion: process.version
+  });
+}));
 app.post('/comments', asyncHandler((req, res) => {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     return res.status(400).json(createErrorResponse(400, 'Request body is required', 'BAD_REQUEST'));

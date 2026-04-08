@@ -1278,6 +1278,69 @@ function testInputSanitizationNested() {
   });
 }
 
+function testEnvEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/env`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(typeof body.nodeEnv, 'string', 'nodeEnv must be a string');
+            assert.strictEqual(typeof body.processVersion, 'string', 'processVersion must be a string');
+            assert.ok(body.processVersion.startsWith('v'), 'processVersion must start with v');
+            assert.strictEqual(Object.keys(body).length, 2, 'response must have exactly 2 keys');
+            console.log('PASS: env endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testEnvEndpointNodeEnvValue() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/env`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            // In test env, NODE_ENV is 'test'
+            assert.strictEqual(body.nodeEnv, process.env.NODE_ENV || 'undefined');
+            assert.strictEqual(body.processVersion, process.version);
+            console.log('PASS: env endpoint node env value');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -1323,6 +1386,8 @@ function testInputSanitizationNested() {
     await testErrorShapeOnThrow();
     await testInputSanitization();
     await testInputSanitizationNested();
+    await testEnvEndpoint();
+    await testEnvEndpointNodeEnvValue();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
