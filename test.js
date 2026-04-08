@@ -621,6 +621,8 @@ function testMetricsEndpoint() {
             assert.ok(body.uptime >= 0, 'uptime must be non-negative');
             assert.strictEqual(typeof body.requestCount, 'number');
             assert.ok(body.requestCount >= 1, 'requestCount must be at least 1');
+            assert.strictEqual(typeof body.avgResponseTime, 'number');
+            assert.ok(body.avgResponseTime >= 0, 'avgResponseTime must be non-negative');
             assert.strictEqual(typeof body.memoryUsage, 'object');
             assert.ok(body.memoryUsage.rss > 0, 'rss must be positive');
             assert.ok(body.memoryUsage.heapTotal > 0, 'heapTotal must be positive');
@@ -1205,6 +1207,77 @@ function testErrorShapeOnThrow() {
   });
 }
 
+function testInputSanitization() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      const req = http.request({
+        hostname: 'localhost',
+        port,
+        path: '/comments',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 201);
+            // HTML tags stripped but content preserved
+            assert.strictEqual(body.text, 'alert(1)Hello World');
+            assert.strictEqual(body.author, 'John');
+            console.log('PASS: input sanitization');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', reject);
+      req.write(JSON.stringify({ text: '<script>alert(1)</script>Hello World', author: '<b>John</b>' }));
+      req.end();
+    });
+  });
+}
+
+function testInputSanitizationNested() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      const req = http.request({
+        hostname: 'localhost',
+        port,
+        path: '/validate',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(body.email, 'test@example.com');
+            assert.strictEqual(body.name, 'John Doe');
+            console.log('PASS: input sanitization nested');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', reject);
+      req.write(JSON.stringify({ email: '<p>test@example.com</p>', name: '<div>John Doe</div>' }));
+      req.end();
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -1248,6 +1321,8 @@ function testErrorShapeOnThrow() {
     testCreateErrorResponseNoCode();
     await testErrorShapeConsistency();
     await testErrorShapeOnThrow();
+    await testInputSanitization();
+    await testInputSanitizationNested();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);

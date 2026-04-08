@@ -9,6 +9,7 @@ app.use(express.json());
 // Metrics tracking
 const startTime = Date.now();
 let requestCount = 0;
+let totalResponseTime = 0;
 
 // Dependency checks for readiness probe
 const dependencyChecks = [
@@ -32,9 +33,40 @@ function requestLogger(req, res, next) {
 }
 app.use(requestLogger);
 
-// Request counter middleware
+// Request counter and response time tracking middleware
 app.use((req, res, next) => {
+  const start = Date.now();
   requestCount++;
+  res.on('finish', () => {
+    totalResponseTime += Date.now() - start;
+  });
+  next();
+});
+
+// Input sanitization middleware - strips HTML tags from string inputs
+function sanitizeInput(obj) {
+  if (typeof obj === 'string') {
+    return obj.replace(/<[^>]*>/g, '');
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeInput);
+  }
+  if (obj && typeof obj === 'object') {
+    const sanitized = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        sanitized[key] = sanitizeInput(obj[key]);
+      }
+    }
+    return sanitized;
+  }
+  return obj;
+}
+
+app.use((req, res, next) => {
+  if (req.body && (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH')) {
+    req.body = sanitizeInput(req.body);
+  }
   next();
 });
 
@@ -140,9 +172,11 @@ app.post('/validate', asyncHandler((req, res) => {
 }));
 
 app.get('/metrics', asyncHandler((req, res) => {
+  const avgResponseTime = requestCount > 0 ? Math.round(totalResponseTime / requestCount) : 0;
   res.json({
     uptime: Math.floor((Date.now() - startTime) / 1000),
     requestCount,
+    avgResponseTime,
     memoryUsage: process.memoryUsage()
   });
 }));
