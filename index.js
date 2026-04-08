@@ -60,6 +60,13 @@ function parseUserInput(input) {
   return String(input).trim().toLowerCase();
 }
 
+function createErrorResponse(status, error, code, extra) {
+  const body = { error, status };
+  if (code) body.code = code;
+  if (extra) Object.assign(body, extra);
+  return body;
+}
+
 function validateEmail(email) {
   if (typeof email !== 'string') return false;
   // Standard email regex: local@domain.tld
@@ -86,7 +93,7 @@ function formatUptime(ms) {
 
 app.get('/health', asyncHandler((req, res) => {
   if (Object.keys(req.query).length > 0) {
-    return res.status(400).json({ error: 'Health endpoint does not accept query parameters' });
+    return res.status(400).json(createErrorResponse(400, 'Health endpoint does not accept query parameters', 'BAD_REQUEST'));
   }
   const elapsedMs = Date.now() - startTime;
   const mem = process.memoryUsage();
@@ -121,13 +128,12 @@ app.post('/validate', asyncHandler((req, res) => {
   const nameValid = validateName(name);
 
   if (!emailValid || !nameValid) {
-    return res.status(400).json({
-      valid: false,
+    return res.status(400).json(createErrorResponse(400, 'Validation failed', 'VALIDATION_ERROR', {
       errors: {
         email: emailValid ? null : 'Invalid email',
         name: nameValid ? null : 'Invalid name'
       }
-    });
+    }));
   }
 
   res.json({ valid: true, email: parseUserInput(email), name: name.trim() });
@@ -147,7 +153,7 @@ app.get('/worktree-verify', asyncHandler((req, res) => {
 
 app.post('/comments', asyncHandler((req, res) => {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-    return res.status(400).json({ error: 'Request body is required' });
+    return res.status(400).json(createErrorResponse(400, 'Request body is required', 'BAD_REQUEST'));
   }
 
   const { text, author } = req.body;
@@ -161,7 +167,7 @@ app.post('/comments', asyncHandler((req, res) => {
   }
 
   if (Object.keys(errors).length > 0) {
-    return res.status(400).json({ error: 'Validation failed', errors });
+    return res.status(400).json(createErrorResponse(400, 'Validation failed', 'VALIDATION_ERROR', { errors }));
   }
 
   res.status(201).json({ text: text.trim(), author: author.trim() });
@@ -184,7 +190,7 @@ app.get('/ready', asyncHandler(async (req, res) => {
 
 // 404 handler - must be after all routes
 app.use((req, res, next) => {
-  res.status(404).json({ error: 'Not Found', path: req.path });
+  res.status(404).json(createErrorResponse(404, 'Not Found', 'NOT_FOUND', { path: req.path }));
 });
 
 // Global error handler - must be last middleware (4 params required)
@@ -192,10 +198,11 @@ app.use((req, res, next) => {
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
+  const code = err.code || 'INTERNAL_ERROR';
   if (process.env.NODE_ENV !== 'test') {
     console.error(`[ERROR] ${req.method} ${req.path}:`, err);
   }
-  res.status(statusCode).json({ error: message });
+  res.status(statusCode).json(createErrorResponse(statusCode, message, code));
 });
 
 module.exports = app;
@@ -212,3 +219,4 @@ module.exports.getMetrics = () => ({
 });
 module.exports.addDependencyCheck = addDependencyCheck;
 module.exports.rateLimiter = rateLimiter;
+module.exports.createErrorResponse = createErrorResponse;
