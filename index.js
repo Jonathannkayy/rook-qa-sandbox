@@ -11,6 +11,7 @@ const startTime = Date.now();
 let requestCount = 0;
 let totalResponseTime = 0;
 const bookmarks = [];
+let nextBookmarkId = 1;
 
 // Dependency checks for readiness probe
 const dependencyChecks = [
@@ -261,12 +262,17 @@ app.post('/bookmarks', asyncHandler((req, res) => {
   }
 
   const bookmark = {
+    id: nextBookmarkId++,
     url: url.trim(),
     title: title.trim(),
     created_at: new Date().toISOString()
   };
   bookmarks.push(bookmark);
   res.status(201).json(bookmark);
+}));
+
+app.get('/bookmarks', asyncHandler((req, res) => {
+  res.json(bookmarks);
 }));
 
 app.get('/ready', asyncHandler(async (req, res) => {
