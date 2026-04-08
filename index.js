@@ -181,6 +181,13 @@ app.get('/metrics', asyncHandler((req, res) => {
   });
 }));
 
+app.get('/stats', asyncHandler((req, res) => {
+  res.json({
+    totalRequests: requestCount,
+    uptime: Math.floor((Date.now() - startTime) / 1000)
+  });
+}));
+
 app.get('/worktree-verify', asyncHandler((req, res) => {
   res.json({ isolated: true });
 }));
@@ -259,4 +266,5 @@ module.exports.getMetrics = () => ({
 });
 module.exports.addDependencyCheck = addDependencyCheck;
 module.exports.rateLimiter = rateLimiter;
+module.exports.getRequestCount = () => requestCount;
 module.exports.createErrorResponse = createErrorResponse;
