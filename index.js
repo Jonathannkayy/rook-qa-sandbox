@@ -78,12 +78,19 @@ app.get('/health', asyncHandler((req, res) => {
     return res.status(400).json({ error: 'Health endpoint does not accept query parameters' });
   }
   const elapsedMs = Date.now() - startTime;
+  const mem = process.memoryUsage();
   res.json({
     status: 'ok',
     startedAt: new Date(startTime).toISOString(),
     uptime_seconds: Math.floor(elapsedMs / 1000),
     uptime: formatUptime(elapsedMs),
-    process_uptime: process.uptime()
+    process_uptime: process.uptime(),
+    memory: {
+      rss: mem.rss,
+      heapUsed: mem.heapUsed,
+      heapTotal: mem.heapTotal,
+      external: mem.external
+    }
   });
 }));
 

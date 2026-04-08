@@ -50,7 +50,56 @@ function testHealthEndpoint() {
             assert.ok(body.uptime.endsWith('s'), 'uptime must end with seconds');
             assert.strictEqual(typeof body.process_uptime, 'number');
             assert.ok(body.process_uptime >= 0, 'process_uptime must be non-negative');
+            // Memory usage fields
+            assert.strictEqual(typeof body.memory, 'object', 'memory must be an object');
+            assert.strictEqual(typeof body.memory.rss, 'number', 'rss must be a number');
+            assert.strictEqual(typeof body.memory.heapUsed, 'number', 'heapUsed must be a number');
+            assert.strictEqual(typeof body.memory.heapTotal, 'number', 'heapTotal must be a number');
+            assert.strictEqual(typeof body.memory.external, 'number', 'external must be a number');
+            assert.ok(body.memory.rss > 0, 'rss must be positive');
+            assert.ok(body.memory.heapUsed > 0, 'heapUsed must be positive');
+            assert.ok(body.memory.heapTotal > 0, 'heapTotal must be positive');
+            assert.ok(body.memory.heapUsed <= body.memory.heapTotal, 'heapUsed must not exceed heapTotal');
+            assert.ok(body.memory.rss >= body.memory.heapUsed, 'rss must be >= heapUsed');
             console.log('PASS: health endpoint');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testHealthMemoryUsage() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/health`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            // memory object has exactly the expected keys
+            const memKeys = Object.keys(body.memory).sort();
+            assert.deepStrictEqual(memKeys, ['external', 'heapTotal', 'heapUsed', 'rss']);
+            // all values are positive integers (bytes)
+            for (const key of memKeys) {
+              assert.ok(Number.isInteger(body.memory[key]), `${key} must be an integer`);
+              assert.ok(body.memory[key] >= 0, `${key} must be non-negative`);
+            }
+            // sanity: heapUsed <= heapTotal <= rss (typical invariant)
+            assert.ok(body.memory.heapUsed <= body.memory.heapTotal, 'heapUsed <= heapTotal');
+            console.log('PASS: health memory usage');
             resolve();
           } catch (err) {
             reject(err);
@@ -883,6 +932,7 @@ function testCommentsEndpointTrimsFields() {
     testValidateName();
     testRequestLoggerExport();
     await testHealthEndpoint();
+    await testHealthMemoryUsage();
     testFormatUptime();
     await testVersionEndpoint();
     await testValidateEndpointSuccess();
