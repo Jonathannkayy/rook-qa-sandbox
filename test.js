@@ -876,6 +876,108 @@ function testCommentsEndpointTrimsFields() {
   });
 }
 
+function testRateLimiterExport() {
+  const { rateLimiter } = require('./index');
+  assert.strictEqual(typeof rateLimiter, 'function');
+  console.log('PASS: rateLimiter export');
+}
+
+function testRateLimitHeaders() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/health`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            assert.strictEqual(res.statusCode, 200);
+            // draft-7 combined header format
+            assert.ok(res.headers['ratelimit'], 'must have ratelimit header');
+            assert.ok(res.headers['ratelimit-policy'], 'must have ratelimit-policy header');
+            assert.ok(res.headers['ratelimit'].includes('limit='), 'ratelimit header must contain limit');
+            assert.ok(res.headers['ratelimit'].includes('remaining='), 'ratelimit header must contain remaining');
+            assert.ok(res.headers['ratelimit'].includes('reset='), 'ratelimit header must contain reset');
+            console.log('PASS: rate limit headers');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testRateLimitEnforced() {
+  const express = require('express');
+  const rateLimit = require('express-rate-limit');
+  const testApp = express();
+
+  // Create a limiter with a very low limit for testing
+  const testLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' }
+  });
+  testApp.use(testLimiter);
+  testApp.get('/test', (req, res) => res.json({ ok: true }));
+
+  return new Promise((resolve, reject) => {
+    const server = testApp.listen(0, async () => {
+      const port = server.address().port;
+      try {
+        // Make 3 requests (within limit)
+        for (let i = 0; i < 3; i++) {
+          await new Promise((res, rej) => {
+            http.get(`http://localhost:${port}/test`, (response) => {
+              let d = '';
+              response.on('data', chunk => d += chunk);
+              response.on('end', () => {
+                assert.strictEqual(response.statusCode, 200, `Request ${i + 1} should succeed`);
+                res();
+              });
+            }).on('error', rej);
+          });
+        }
+
+        // 4th request should be rate limited
+        await new Promise((res, rej) => {
+          http.get(`http://localhost:${port}/test`, (response) => {
+            let d = '';
+            response.on('data', chunk => d += chunk);
+            response.on('end', () => {
+              try {
+                assert.strictEqual(response.statusCode, 429, 'Must return 429 when rate limited');
+                const body = JSON.parse(d);
+                assert.strictEqual(body.error, 'Too many requests, please try again later');
+                console.log('PASS: rate limit enforced (429)');
+                res();
+              } catch (err) {
+                rej(err);
+              }
+            });
+          }).on('error', rej);
+        });
+
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -910,6 +1012,9 @@ function testCommentsEndpointTrimsFields() {
     await testCommentsEndpointMissingAuthor();
     await testCommentsEndpointMissingBoth();
     await testCommentsEndpointTrimsFields();
+    testRateLimiterExport();
+    await testRateLimitHeaders();
+    await testRateLimitEnforced();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);

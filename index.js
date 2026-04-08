@@ -1,6 +1,7 @@
 // Rook was here
 // Main app - intentionally has a bug on line 15
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const app = express();
 
 app.use(express.json());
@@ -36,6 +37,16 @@ app.use((req, res, next) => {
   requestCount++;
   next();
 });
+
+// Rate limiting middleware - 100 requests per 15 minutes per IP
+const rateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' }
+});
+app.use(rateLimiter);
 
 // Async route wrapper - catches errors and forwards to error handler
 function asyncHandler(fn) {
@@ -193,3 +204,4 @@ module.exports.getMetrics = () => ({
   memoryUsage: process.memoryUsage()
 });
 module.exports.addDependencyCheck = addDependencyCheck;
+module.exports.rateLimiter = rateLimiter;
