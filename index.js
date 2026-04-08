@@ -110,8 +110,10 @@ function createErrorResponse(status, error, code, extra) {
 
 function validateEmail(email) {
   if (typeof email !== 'string') return false;
-  // Standard email regex: local@domain.tld
-  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$/.test(email);
+  const normalized = email.trim();
+  if (!normalized || normalized.length > 254) return false;
+  const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+  return emailRegex.test(normalized);
 }
 
 function validateName(name) {
