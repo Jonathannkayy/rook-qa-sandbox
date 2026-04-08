@@ -244,6 +244,10 @@ app.get('/ready', asyncHandler(async (req, res) => {
   res.status(allReady ? 200 : 503).json({ ready: allReady, checks });
 }));
 
+app.get('/completion-test', asyncHandler((req, res) => {
+  res.json({ completed: true, method: 'metadata' });
+}));
+
 // 404 handler - must be after all routes
 app.use((req, res, next) => {
   res.status(404).json(createErrorResponse(404, 'Not Found', 'NOT_FOUND', { path: req.path }));
