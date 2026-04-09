@@ -2182,7 +2182,7 @@ function testUptimeEndpoint() {
             server.close();
           }
         });
-      }).on('error', reject);
+      }).on('error', (err) => { server.close(); reject(err); });
     });
   });
 }

@@ -243,9 +243,9 @@ app.get('/stats', asyncHandler((req, res) => {
 }));
 
 app.get('/uptime', asyncHandler((req, res) => {
-  const uptimeSeconds = (Date.now() - startTime) / 1000;
+  const uptimeSeconds = Math.max(0, (Date.now() - startTime) / 1000);
   res.json({
-    uptime: Number(uptimeSeconds)
+    uptime: Number(uptimeSeconds.toFixed(2))
   });
 }));
 
