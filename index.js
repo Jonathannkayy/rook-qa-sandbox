@@ -195,6 +195,10 @@ app.get('/health', asyncHandler((req, res) => {
 
 app.get('/version', asyncHandler((req, res) => {
   const { version } = require('./package.json');
+  const semverRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+  if (!semverRegex.test(version)) {
+    return res.status(500).json(createErrorResponse(500, 'Package version is not valid semver', 'INVALID_VERSION'));
+  }
   res.json({ version });
 }));
 

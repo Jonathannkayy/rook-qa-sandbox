@@ -140,6 +140,9 @@ function testFormatUptime() {
   console.log('PASS: formatUptime');
 }
 
+// Semver regex per https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
+const SEMVER_REGEX = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
 function testVersionEndpoint() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
@@ -152,6 +155,8 @@ function testVersionEndpoint() {
           try {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(typeof body.version, 'string', 'version must be a string');
+            assert.ok(SEMVER_REGEX.test(body.version), `version "${body.version}" must be valid semver`);
             assert.strictEqual(body.version, '1.0.0');
             console.log('PASS: version endpoint');
             resolve();
@@ -167,6 +172,94 @@ function testVersionEndpoint() {
       });
     });
   });
+}
+
+function testVersionEndpointSemverFormat() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/version`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 200);
+            // Must have exactly the "version" key
+            assert.ok('version' in body, 'response must contain version key');
+            const v = body.version;
+            // Must be a string
+            assert.strictEqual(typeof v, 'string', 'version must be a string');
+            // Must match full semver regex from semver.org
+            assert.ok(SEMVER_REGEX.test(v), `version "${v}" must match semver spec`);
+            // Extract MAJOR.MINOR.PATCH and verify they are non-negative integers
+            const match = v.match(SEMVER_REGEX);
+            const major = parseInt(match[1], 10);
+            const minor = parseInt(match[2], 10);
+            const patch = parseInt(match[3], 10);
+            assert.ok(major >= 0, 'MAJOR must be non-negative');
+            assert.ok(minor >= 0, 'MINOR must be non-negative');
+            assert.ok(patch >= 0, 'PATCH must be non-negative');
+            // No leading zeros in numeric identifiers
+            assert.strictEqual(match[1], String(major), 'MAJOR must not have leading zeros');
+            assert.strictEqual(match[2], String(minor), 'MINOR must not have leading zeros');
+            assert.strictEqual(match[3], String(patch), 'PATCH must not have leading zeros');
+            console.log('PASS: version endpoint semver format');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testSemverRegexValidation() {
+  // Valid semver strings
+  const validVersions = [
+    '0.0.0',
+    '1.0.0',
+    '1.2.3',
+    '10.20.30',
+    '1.0.0-alpha',
+    '1.0.0-alpha.1',
+    '1.0.0-0.3.7',
+    '1.0.0-x.7.z.92',
+    '1.0.0+build.1',
+    '1.0.0-beta+exp.sha.5114f85',
+    '1.0.0+20130313144700',
+  ];
+  for (const v of validVersions) {
+    assert.ok(SEMVER_REGEX.test(v), `"${v}" should be valid semver`);
+  }
+
+  // Invalid semver strings
+  const invalidVersions = [
+    '',
+    '1',
+    '1.0',
+    '1.0.0.0',
+    'v1.0.0',
+    '01.0.0',
+    '1.01.0',
+    '1.0.01',
+    '1.0.0-',
+    '1.0.0+',
+    'not-a-version',
+    '1.0.0-01',
+  ];
+  for (const v of invalidVersions) {
+    assert.ok(!SEMVER_REGEX.test(v), `"${v}" should NOT be valid semver`);
+  }
+
+  console.log('PASS: semver regex validation');
 }
 
 function postJson(port, path, payload) {
@@ -2093,6 +2186,8 @@ function testAuthRateLimitEnforced() {
     await testHealthMemoryUsage();
     testFormatUptime();
     await testVersionEndpoint();
+    await testVersionEndpointSemverFormat();
+    testSemverRegexValidation();
     await testValidateEndpointSuccess();
     await testValidateEndpointInvalidEmail();
     await testValidateEndpointInvalidName();
