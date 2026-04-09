@@ -312,6 +312,128 @@ app.delete('/cache', asyncHandler((req, res) => {
   res.json({ cleared: true });
 }));
 
+// Gate A - Relay detection timing analysis
+// Accepts an array of relay events and detects timing anomalies
+const RELAY_TIMING_DEFAULTS = {
+  minIntervalMs: 50,
+  maxIntervalMs: 5000,
+  maxDriftMs: 200
+};
+
+function analyzeRelayTiming(events, options = {}) {
+  const { minIntervalMs, maxIntervalMs, maxDriftMs } = { ...RELAY_TIMING_DEFAULTS, ...options };
+  const issues = [];
+
+  if (!Array.isArray(events) || events.length === 0) {
+    return { valid: false, issues: [{ type: 'NO_EVENTS', message: 'No relay events provided' }], summary: { eventCount: 0 } };
+  }
+
+  // Validate event structure
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    if (!ev || typeof ev.timestamp !== 'number' || !ev.relay) {
+      issues.push({ type: 'INVALID_EVENT', index: i, message: `Event at index ${i} is malformed` });
+    }
+  }
+
+  if (issues.length > 0) {
+    return { valid: false, issues, summary: { eventCount: events.length } };
+  }
+
+  // Sort by timestamp for analysis
+  const sorted = [...events].sort((a, b) => a.timestamp - b.timestamp);
+
+  // Check for out-of-order events (compare original vs sorted)
+  for (let i = 0; i < events.length; i++) {
+    if (events[i].timestamp !== sorted[i].timestamp) {
+      issues.push({ type: 'OUT_OF_ORDER', index: i, message: `Event at index ${i} is out of chronological order` });
+    }
+  }
+
+  // Analyze intervals between consecutive events
+  const intervals = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const interval = sorted[i].timestamp - sorted[i - 1].timestamp;
+    intervals.push(interval);
+
+    if (interval < minIntervalMs) {
+      issues.push({
+        type: 'TOO_FAST',
+        index: i,
+        interval,
+        threshold: minIntervalMs,
+        message: `Interval ${interval}ms between events ${i - 1} and ${i} is below minimum ${minIntervalMs}ms`
+      });
+    }
+
+    if (interval > maxIntervalMs) {
+      issues.push({
+        type: 'TOO_SLOW',
+        index: i,
+        interval,
+        threshold: maxIntervalMs,
+        message: `Interval ${interval}ms between events ${i - 1} and ${i} exceeds maximum ${maxIntervalMs}ms`
+      });
+    }
+  }
+
+  // Check for duplicate timestamps
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].timestamp === sorted[i - 1].timestamp) {
+      issues.push({
+        type: 'DUPLICATE_TIMESTAMP',
+        index: i,
+        timestamp: sorted[i].timestamp,
+        message: `Duplicate timestamp ${sorted[i].timestamp} at events ${i - 1} and ${i}`
+      });
+    }
+  }
+
+  // Drift detection: check if intervals are consistent (low variance)
+  if (intervals.length >= 2) {
+    const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    for (let i = 0; i < intervals.length; i++) {
+      const drift = Math.abs(intervals[i] - avgInterval);
+      if (drift > maxDriftMs) {
+        issues.push({
+          type: 'TIMING_DRIFT',
+          index: i + 1,
+          drift: Math.round(drift),
+          avgInterval: Math.round(avgInterval),
+          threshold: maxDriftMs,
+          message: `Timing drift of ${Math.round(drift)}ms at event ${i + 1} exceeds threshold ${maxDriftMs}ms`
+        });
+      }
+    }
+  }
+
+  const avgInterval = intervals.length > 0 ? Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length) : 0;
+  const minInterval = intervals.length > 0 ? Math.min(...intervals) : 0;
+  const maxInterval = intervals.length > 0 ? Math.max(...intervals) : 0;
+
+  return {
+    valid: issues.length === 0,
+    issues,
+    summary: {
+      eventCount: events.length,
+      avgIntervalMs: avgInterval,
+      minIntervalMs: minInterval,
+      maxIntervalMs: maxInterval
+    }
+  };
+}
+
+app.post('/gate-a', asyncHandler((req, res) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json(createErrorResponse(400, 'Request body is required', 'BAD_REQUEST'));
+  }
+
+  const { events, options } = req.body;
+  const result = analyzeRelayTiming(events, options);
+  const statusCode = result.valid ? 200 : 422;
+  res.status(statusCode).json(result);
+}));
+
 // 404 handler - must be after all routes
 app.use((req, res, next) => {
   res.status(404).json(createErrorResponse(404, 'Not Found', 'NOT_FOUND', { path: req.path }));
@@ -346,3 +468,4 @@ module.exports.rateLimiter = rateLimiter;
 module.exports.getRequestCount = () => requestCount;
 module.exports.createErrorResponse = createErrorResponse;
 module.exports.correlationId = correlationId;
+module.exports.analyzeRelayTiming = analyzeRelayTiming;
