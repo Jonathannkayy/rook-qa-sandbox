@@ -4,6 +4,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const os = require('os');
 const app = express();
 
 app.use(express.json());
@@ -378,6 +379,10 @@ app.delete('/cache', asyncHandler((req, res) => {
   requestCount = 0;
   totalResponseTime = 0;
   res.json({ cleared: true });
+}));
+
+app.get('/hostname', asyncHandler((req, res) => {
+  res.json({ hostname: os.hostname() });
 }));
 
 // 404 handler - must be after all routes
