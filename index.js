@@ -54,10 +54,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// Input sanitization middleware - strips HTML tags from string inputs
+// Input sanitization middleware - strips HTML tags and encodes dangerous characters
+function sanitizeString(str) {
+  // Recursively strip HTML tags to prevent nested tag bypass (e.g. <scr<script>ipt>)
+  let prev;
+  let current = str;
+  do {
+    prev = current;
+    current = current.replace(/<[^>]*>/g, '');
+  } while (current !== prev);
+  // Strip javascript: protocol variants (case-insensitive, with optional whitespace)
+  current = current.replace(/javascript\s*:/gi, '');
+  // Encode remaining HTML-significant characters to prevent attribute injection
+  current = current
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+  return current;
+}
+
 function sanitizeInput(obj) {
   if (typeof obj === 'string') {
-    return obj.replace(/<[^>]*>/g, '');
+    return sanitizeString(obj);
   }
   if (Array.isArray(obj)) {
     return obj.map(sanitizeInput);
@@ -74,9 +94,13 @@ function sanitizeInput(obj) {
   return obj;
 }
 
+// Apply sanitization to request body, query params, and URL params
 app.use((req, res, next) => {
   if (req.body && (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH')) {
     req.body = sanitizeInput(req.body);
+  }
+  if (req.query && Object.keys(req.query).length > 0) {
+    req.query = sanitizeInput(req.query);
   }
   next();
 });
@@ -120,6 +144,24 @@ function validateEmail(email) {
 
 function validateName(name) {
   return typeof name === 'string' && name.trim().length >= 2;
+}
+
+function validateUrl(url) {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.length > 2048) return false;
+  // Block javascript: protocol (case-insensitive, whitespace-tolerant)
+  if (/^\s*javascript\s*:/i.test(trimmed)) return false;
+  // Block data: protocol
+  if (/^\s*data\s*:/i.test(trimmed)) return false;
+  // Must start with http:// or https://
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    new URL(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function formatUptime(ms) {
@@ -168,7 +210,7 @@ app.get('/version-info', asyncHandler((req, res) => {
 }));
 
 app.get('/user/:id', asyncHandler((req, res) => {
-  const cleaned = parseUserInput(req.params.id);
+  const cleaned = parseUserInput(sanitizeString(req.params.id));
   res.json({ user: cleaned });
 }));
 
@@ -252,6 +294,8 @@ app.post('/bookmarks', asyncHandler((req, res) => {
 
   if (typeof url !== 'string' || url.trim().length === 0) {
     errors.url = 'URL must be a non-empty string';
+  } else if (!validateUrl(url)) {
+    errors.url = 'URL must be a valid http or https URL';
   }
   if (typeof title !== 'string' || title.trim().length === 0) {
     errors.title = 'Title must be a non-empty string';
@@ -346,3 +390,6 @@ module.exports.rateLimiter = rateLimiter;
 module.exports.getRequestCount = () => requestCount;
 module.exports.createErrorResponse = createErrorResponse;
 module.exports.correlationId = correlationId;
+module.exports.sanitizeInput = sanitizeInput;
+module.exports.sanitizeString = sanitizeString;
+module.exports.validateUrl = validateUrl;
