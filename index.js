@@ -242,6 +242,13 @@ app.get('/stats', asyncHandler((req, res) => {
   });
 }));
 
+app.get('/uptime', asyncHandler((req, res) => {
+  const uptimeSeconds = (Date.now() - startTime) / 1000;
+  res.json({
+    uptime: Number(uptimeSeconds)
+  });
+}));
+
 app.get('/worktree-verify', asyncHandler((req, res) => {
   res.json({ isolated: true });
 }));
