@@ -7,7 +7,9 @@
     "build": "echo 'Build OK'"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.3.2"
+    "express-rate-limit": "^8.3.2",
+    "jsonwebtoken": "^9.0.3"
   }
 }

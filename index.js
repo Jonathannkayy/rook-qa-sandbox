@@ -2,6 +2,8 @@
 // Main app - intentionally has a bug on line 15
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const app = express();
 
 app.use(express.json());
@@ -12,6 +14,25 @@ let requestCount = 0;
 let totalResponseTime = 0;
 const bookmarks = [];
 let nextBookmarkId = 1;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const JWT_EXPIRY = '1h';
+
+const users = [
+  {
+    id: 1,
+    username: 'admin',
+    password: bcrypt.hashSync('password123', 10),
+    email: 'admin@example.com',
+    role: 'admin'
+  },
+  {
+    id: 2,
+    username: 'user',
+    password: bcrypt.hashSync('userpass', 10),
+    email: 'user@example.com',
+    role: 'user'
+  }
+];
 
 // Dependency checks for readiness probe
 const dependencyChecks = [
@@ -81,9 +102,24 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting middleware - 100 requests per 15 minutes per IP
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json(createErrorResponse(401, 'Authentication required', 'AUTH_REQUIRED'));
+  }
+
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    return res.status(403).json(createErrorResponse(403, 'Invalid or expired token', 'INVALID_TOKEN'));
+  }
+}
+
 const rateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 60 * 1000,
   limit: 100,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
@@ -242,7 +278,7 @@ app.post('/comments', asyncHandler((req, res) => {
   res.status(201).json({ text: text.trim(), author: author.trim() });
 }));
 
-app.post('/bookmarks', asyncHandler((req, res) => {
+app.post('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     return res.status(400).json(createErrorResponse(400, 'Request body is required', 'BAD_REQUEST'));
   }
@@ -271,8 +307,40 @@ app.post('/bookmarks', asyncHandler((req, res) => {
   res.status(201).json(bookmark);
 }));
 
-app.get('/bookmarks', asyncHandler((req, res) => {
+app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(bookmarks);
+}));
+
+app.post('/login', asyncHandler(async (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json(createErrorResponse(400, 'Username and password are required', 'BAD_REQUEST'));
+  }
+
+  const user = users.find(existingUser => existingUser.username === username);
+  if (!user) {
+    return res.status(401).json(createErrorResponse(401, 'Invalid credentials', 'INVALID_CREDENTIALS'));
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.password);
+  if (!passwordMatches) {
+    return res.status(401).json(createErrorResponse(401, 'Invalid credentials', 'INVALID_CREDENTIALS'));
+  }
+
+  const userPayload = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role
+  };
+
+  const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  res.json({ token, user: userPayload });
+}));
+
+app.get('/me', authenticateToken, asyncHandler((req, res) => {
+  res.json({ user: req.user });
 }));
 
 app.get('/ready', asyncHandler(async (req, res) => {
@@ -346,3 +414,6 @@ module.exports.rateLimiter = rateLimiter;
 module.exports.getRequestCount = () => requestCount;
 module.exports.createErrorResponse = createErrorResponse;
 module.exports.correlationId = correlationId;
+module.exports.authenticateToken = authenticateToken;
+module.exports.users = users;
+module.exports.JWT_SECRET = JWT_SECRET;

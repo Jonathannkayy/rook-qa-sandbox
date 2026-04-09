@@ -1,5 +1,7 @@
 const assert = require('assert');
 const http = require('http');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('./index');
 
 // Basic test suite
 function testParseUserInput() {
@@ -186,6 +188,40 @@ function postJson(port, path, payload) {
     req.write(JSON.stringify(payload));
     req.end();
   });
+}
+
+function requestJson(port, method, path, payload, headers) {
+  return new Promise((resolve, reject) => {
+    const finalHeaders = Object.assign({}, headers);
+
+    if (payload !== undefined) {
+      finalHeaders['Content-Type'] = finalHeaders['Content-Type'] || 'application/json';
+    }
+
+    const req = http.request({
+      hostname: 'localhost',
+      port,
+      path,
+      method,
+      headers: finalHeaders
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ res, body: data ? JSON.parse(data) : null }));
+    });
+
+    req.on('error', reject);
+
+    if (payload !== undefined) {
+      req.write(JSON.stringify(payload));
+    }
+
+    req.end();
+  });
+}
+
+async function login(port, username, password) {
+  return postJson(port, '/login', { username, password });
 }
 
 function testValidateEndpointSuccess() {
@@ -1639,10 +1675,13 @@ function testBookmarksEndpointCreatedAt() {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
         const before = new Date().toISOString();
-        const { res, body } = await postJson(port, '/bookmarks', {
+        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
           url: 'https://example.com',
           title: 'Example Site'
+        }, {
+          Authorization: `Bearer ${loginBody.token}`
         });
         const after = new Date().toISOString();
         assert.strictEqual(res.statusCode, 201);
@@ -1666,28 +1705,22 @@ function testBookmarksEndpointCreatedAt() {
 function testGetBookmarksEmpty() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
-    const server = app.listen(0, () => {
-      const port = server.address().port;
-      http.get(`http://localhost:${port}/bookmarks`, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const body = JSON.parse(data);
-            assert.strictEqual(res.statusCode, 200);
-            assert.ok(Array.isArray(body), 'response must be an array');
-            console.log('PASS: GET /bookmarks returns array');
-            resolve();
-          } catch (err) {
-            reject(err);
-          } finally {
-            server.close();
-          }
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks', undefined, {
+          Authorization: `Bearer ${loginBody.token}`
         });
-      }).on('error', (err) => {
-        server.close();
+        assert.strictEqual(res.statusCode, 200);
+        assert.ok(Array.isArray(body), 'response must be an array');
+        console.log('PASS: GET /bookmarks returns array');
+        resolve();
+      } catch (err) {
         reject(err);
-      });
+      } finally {
+        server.close();
+      }
     });
   });
 }
@@ -1698,21 +1731,16 @@ function testGetBookmarksAfterCreate() {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        // Create a bookmark
-        const { res: createRes, body: created } = await postJson(port, '/bookmarks', {
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res: createRes, body: created } = await requestJson(port, 'POST', '/bookmarks', {
           url: 'https://nodejs.org',
           title: 'Node.js'
-        });
+        }, headers);
         assert.strictEqual(createRes.statusCode, 201);
         assert.strictEqual(typeof created.id, 'number', 'bookmark must have a numeric id');
-        // List bookmarks
-        const listBody = await new Promise((res, rej) => {
-          http.get(`http://localhost:${port}/bookmarks`, (resp) => {
-            let d = '';
-            resp.on('data', c => d += c);
-            resp.on('end', () => res(JSON.parse(d)));
-          }).on('error', rej);
-        });
+        const { res: listRes, body: listBody } = await requestJson(port, 'GET', '/bookmarks', undefined, headers);
+        assert.strictEqual(listRes.statusCode, 200);
         assert.ok(Array.isArray(listBody), 'response must be an array');
         const found = listBody.find(b => b.id === created.id);
         assert.ok(found, 'created bookmark must appear in list');
@@ -1736,18 +1764,315 @@ function testBookmarkAutoGeneratedId() {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const { body: b1 } = await postJson(port, '/bookmarks', {
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: b1 } = await requestJson(port, 'POST', '/bookmarks', {
           url: 'https://a.com',
           title: 'A'
-        });
-        const { body: b2 } = await postJson(port, '/bookmarks', {
+        }, headers);
+        const { body: b2 } = await requestJson(port, 'POST', '/bookmarks', {
           url: 'https://b.com',
           title: 'B'
-        });
+        }, headers);
         assert.strictEqual(typeof b1.id, 'number', 'id must be a number');
         assert.strictEqual(typeof b2.id, 'number', 'id must be a number');
         assert.notStrictEqual(b1.id, b2.id, 'ids must be unique');
         console.log('PASS: bookmarks have unique auto-generated ids');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testLoginSuccess() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await login(port, 'admin', 'password123');
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(typeof body.token, 'string');
+        assert.strictEqual(body.user.id, 1);
+        assert.strictEqual(body.user.username, 'admin');
+        assert.strictEqual(body.user.email, 'admin@example.com');
+        assert.strictEqual(body.user.role, 'admin');
+        console.log('PASS: login success');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testLoginInvalidPassword() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await login(port, 'admin', 'wrong-password');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.error, 'Invalid credentials');
+        assert.strictEqual(body.code, 'INVALID_CREDENTIALS');
+        console.log('PASS: login invalid password');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testLoginMissingFields() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const missingUsername = await postJson(port, '/login', { password: 'password123' });
+        assert.strictEqual(missingUsername.res.statusCode, 400);
+        const missingPassword = await postJson(port, '/login', { username: 'admin' });
+        assert.strictEqual(missingPassword.res.statusCode, 400);
+        console.log('PASS: login missing fields');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testLoginUnknownUser() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await login(port, 'missing-user', 'password123');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.error, 'Invalid credentials');
+        assert.strictEqual(body.code, 'INVALID_CREDENTIALS');
+        console.log('PASS: login unknown user');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testMeEndpoint() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const { res, body } = await requestJson(port, 'GET', '/me', undefined, {
+          Authorization: `Bearer ${loginBody.token}`
+        });
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(body.user.id, 1);
+        assert.strictEqual(body.user.username, 'admin');
+        assert.strictEqual(body.user.email, 'admin@example.com');
+        assert.strictEqual(body.user.role, 'admin');
+        console.log('PASS: me endpoint');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testMeWithoutToken() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await requestJson(port, 'GET', '/me');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.error, 'Authentication required');
+        assert.strictEqual(body.code, 'AUTH_REQUIRED');
+        console.log('PASS: me without token');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testMeWithInvalidToken() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await requestJson(port, 'GET', '/me', undefined, {
+          Authorization: 'Bearer definitely-not-a-token'
+        });
+        assert.strictEqual(res.statusCode, 403);
+        assert.strictEqual(body.error, 'Invalid or expired token');
+        assert.strictEqual(body.code, 'INVALID_TOKEN');
+        console.log('PASS: me with invalid token');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testMeWithExpiredToken() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const token = jwt.sign({ id: 1, username: 'admin', email: 'admin@example.com', role: 'admin' }, JWT_SECRET, {
+          expiresIn: '0s'
+        });
+        const { res, body } = await requestJson(port, 'GET', '/me', undefined, {
+          Authorization: `Bearer ${token}`
+        });
+        assert.strictEqual(res.statusCode, 403);
+        assert.strictEqual(body.error, 'Invalid or expired token');
+        assert.strictEqual(body.code, 'INVALID_TOKEN');
+        console.log('PASS: me with expired token');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testProtectedBookmarksWithoutAuth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.error, 'Authentication required');
+        assert.strictEqual(body.code, 'AUTH_REQUIRED');
+        console.log('PASS: protected bookmarks without auth');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testProtectedBookmarksWithAuth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks', undefined, {
+          Authorization: `Bearer ${loginBody.token}`
+        });
+        assert.strictEqual(res.statusCode, 200);
+        assert.ok(Array.isArray(body));
+        console.log('PASS: protected bookmarks with auth');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testProtectedPostBookmarkWithAuth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://auth.example.com',
+          title: 'Auth Bookmark'
+        }, {
+          Authorization: `Bearer ${loginBody.token}`
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.url, 'https://auth.example.com');
+        assert.strictEqual(body.title, 'Auth Bookmark');
+        console.log('PASS: protected POST /bookmarks with auth');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testAuthRateLimitEnforced() {
+  const express = require('express');
+  const rateLimit = require('express-rate-limit');
+  const testApp = express();
+
+  const authLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 3,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' }
+  });
+
+  testApp.use(express.json());
+  testApp.use(authLimiter);
+  testApp.post('/login', (req, res) => res.json({ ok: true }));
+
+  return new Promise((resolve, reject) => {
+    const server = testApp.listen(0, async () => {
+      try {
+        const port = server.address().port;
+
+        for (let i = 0; i < 3; i++) {
+          const response = await requestJson(port, 'POST', '/login', { username: 'admin', password: 'password123' });
+          assert.strictEqual(response.res.statusCode, 200, `Request ${i + 1} should succeed`);
+        }
+
+        const rateLimited = await requestJson(port, 'POST', '/login', { username: 'admin', password: 'password123' });
+        assert.strictEqual(rateLimited.res.statusCode, 429);
+        assert.strictEqual(rateLimited.body.error, 'Too many requests, please try again later');
+        console.log('PASS: auth rate limit enforced');
         resolve();
       } catch (err) {
         reject(err);
@@ -1814,6 +2139,18 @@ function testBookmarkAutoGeneratedId() {
     await testDeleteCacheEndpoint();
     await testDeleteCacheResetsMetrics();
     await testVersionInfoEndpoint();
+    await testLoginSuccess();
+    await testLoginInvalidPassword();
+    await testLoginMissingFields();
+    await testLoginUnknownUser();
+    await testMeEndpoint();
+    await testMeWithoutToken();
+    await testMeWithInvalidToken();
+    await testMeWithExpiredToken();
+    await testProtectedBookmarksWithoutAuth();
+    await testProtectedBookmarksWithAuth();
+    await testProtectedPostBookmarkWithAuth();
+    await testAuthRateLimitEnforced();
     await testBookmarksEndpointCreatedAt();
     await testGetBookmarksEmpty();
     await testGetBookmarksAfterCreate();
