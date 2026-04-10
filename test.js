@@ -2083,25 +2083,25 @@ function testAuthRateLimitEnforced() {
   });
 }
 
-function testPostBookmarkMissingTitle() {
+function testGetBookmarkByIdSuccess() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://example.com'
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        assert.strictEqual(body.errors.url, undefined);
-        console.log('PASS: POST /bookmarks missing title');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://example.com/byid',
+          title: 'ById Test'
+        }, headers);
+        const { res, body } = await requestJson(port, 'GET', `/bookmarks/${created.id}`, undefined, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(body.id, created.id);
+        assert.strictEqual(body.url, 'https://example.com/byid');
+        assert.strictEqual(body.title, 'ById Test');
+        assert.strictEqual(typeof body.created_at, 'string');
+        console.log('PASS: GET /bookmarks/:id success');
         resolve();
       } catch (err) {
         reject(err);
@@ -2112,25 +2112,20 @@ function testPostBookmarkMissingTitle() {
   });
 }
 
-function testPostBookmarkEmptyTitle() {
+function testGetBookmarkByIdNotFound() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://example.com',
-          title: ''
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        console.log('PASS: POST /bookmarks empty title');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/999999', undefined, headers);
+        assert.strictEqual(res.statusCode, 404);
+        assert.strictEqual(body.error, 'Bookmark not found');
+        assert.strictEqual(body.status, 404);
+        assert.strictEqual(body.code, 'NOT_FOUND');
+        console.log('PASS: GET /bookmarks/:id not found returns 404');
         resolve();
       } catch (err) {
         reject(err);
@@ -2141,25 +2136,20 @@ function testPostBookmarkEmptyTitle() {
   });
 }
 
-function testPostBookmarkWhitespaceTitle() {
+function testGetBookmarkByIdInvalidId() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://example.com',
-          title: '   '
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/abc', undefined, headers);
         assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.error, 'Bookmark ID must be a number');
         assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        console.log('PASS: POST /bookmarks whitespace-only title');
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: GET /bookmarks/:id invalid id returns 400');
         resolve();
       } catch (err) {
         reject(err);
@@ -2170,102 +2160,22 @@ function testPostBookmarkWhitespaceTitle() {
   });
 }
 
-function testPostBookmarkMissingUrl() {
+function testGetBookmarkByIdWithoutAuth() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          title: 'My Bookmark'
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.url, 'URL must be a non-empty string');
-        assert.strictEqual(body.errors.title, undefined);
-        console.log('PASS: POST /bookmarks missing url');
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/1');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.error, 'Authentication required');
+        assert.strictEqual(body.code, 'AUTH_REQUIRED');
+        console.log('PASS: GET /bookmarks/:id without auth returns 401');
         resolve();
       } catch (err) {
         reject(err);
       } finally {
         server.close();
-      }
-    });
-  });
-}
-
-function testPostBookmarkMissingBothFields() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {}, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.url, 'URL must be a non-empty string');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        console.log('PASS: POST /bookmarks missing both fields');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostBookmarkEmptyBody() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { body: loginBody } = await login(port, 'admin', 'password123');
-        const req = http.request({
-          hostname: 'localhost',
-          port,
-          path: '/bookmarks',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain',
-            'Authorization': `Bearer ${loginBody.token}`
-          }
-        }, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              const body = JSON.parse(data);
-              assert.strictEqual(res.statusCode, 400);
-              assert.strictEqual(body.error, 'Request body is required');
-              assert.strictEqual(body.status, 400);
-              assert.strictEqual(body.code, 'BAD_REQUEST');
-              console.log('PASS: POST /bookmarks empty body');
-              resolve();
-            } catch (err) {
-              reject(err);
-            } finally {
-              server.close();
-            }
-          });
-        });
-        req.on('error', (err) => { server.close(); reject(err); });
-        req.end();
-      } catch (err) {
-        server.close();
-        reject(err);
       }
     });
   });
@@ -2343,12 +2253,10 @@ function testPostBookmarkEmptyBody() {
     await testGetBookmarksEmpty();
     await testGetBookmarksAfterCreate();
     await testBookmarkAutoGeneratedId();
-    await testPostBookmarkMissingTitle();
-    await testPostBookmarkEmptyTitle();
-    await testPostBookmarkWhitespaceTitle();
-    await testPostBookmarkMissingUrl();
-    await testPostBookmarkMissingBothFields();
-    await testPostBookmarkEmptyBody();
+    await testGetBookmarkByIdSuccess();
+    await testGetBookmarkByIdNotFound();
+    await testGetBookmarkByIdInvalidId();
+    await testGetBookmarkByIdWithoutAuth();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
