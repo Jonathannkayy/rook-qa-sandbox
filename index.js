@@ -1,6 +1,7 @@
 // Rook was here
 // Main app - intentionally has a bug on line 15
 const express = require('express');
+const createRateLimiter = require('./middleware/rateLimiter');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -417,3 +418,4 @@ module.exports.correlationId = correlationId;
 module.exports.authenticateToken = authenticateToken;
 module.exports.users = users;
 module.exports.JWT_SECRET = JWT_SECRET;
+module.exports.createRateLimiter = createRateLimiter;
