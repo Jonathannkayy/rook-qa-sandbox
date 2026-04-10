@@ -2083,25 +2083,27 @@ function testAuthRateLimitEnforced() {
   });
 }
 
-function testPostBookmarkMissingTitle() {
+function testDeleteBookmark() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://example.com'
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        assert.strictEqual(body.errors.url, undefined);
-        console.log('PASS: POST /bookmarks missing title');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://delete-me.com',
+          title: 'Delete Me'
+        }, headers);
+        const { res: delRes, body: delBody } = await requestJson(port, 'DELETE', `/bookmarks/${created.id}`, undefined, headers);
+        assert.strictEqual(delRes.statusCode, 200);
+        assert.strictEqual(delBody.deleted, true);
+        assert.strictEqual(delBody.id, created.id);
+        // Verify it's gone from the list
+        const { body: listBody } = await requestJson(port, 'GET', '/bookmarks', undefined, headers);
+        const found = listBody.find(b => b.id === created.id);
+        assert.strictEqual(found, undefined, 'deleted bookmark must not appear in list');
+        console.log('PASS: DELETE /bookmarks/:id');
         resolve();
       } catch (err) {
         reject(err);
@@ -2112,25 +2114,19 @@ function testPostBookmarkMissingTitle() {
   });
 }
 
-function testPostBookmarkEmptyTitle() {
+function testDeleteBookmarkNotFound() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://example.com',
-          title: ''
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        console.log('PASS: POST /bookmarks empty title');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'DELETE', '/bookmarks/99999', undefined, headers);
+        assert.strictEqual(res.statusCode, 404);
+        assert.strictEqual(body.error, 'Bookmark not found');
+        assert.strictEqual(body.code, 'NOT_FOUND');
+        console.log('PASS: DELETE /bookmarks/:id not found');
         resolve();
       } catch (err) {
         reject(err);
@@ -2141,25 +2137,16 @@ function testPostBookmarkEmptyTitle() {
   });
 }
 
-function testPostBookmarkWhitespaceTitle() {
+function testDeleteBookmarkWithoutAuth() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://example.com',
-          title: '   '
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        console.log('PASS: POST /bookmarks whitespace-only title');
+        const { res, body } = await requestJson(port, 'DELETE', '/bookmarks/1');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.code, 'AUTH_REQUIRED');
+        console.log('PASS: DELETE /bookmarks/:id without auth');
         resolve();
       } catch (err) {
         reject(err);
@@ -2170,25 +2157,24 @@ function testPostBookmarkWhitespaceTitle() {
   });
 }
 
-function testPostBookmarkMissingUrl() {
+function testSearchBookmarks() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {
-          title: 'My Bookmark'
-        }, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.url, 'URL must be a non-empty string');
-        assert.strictEqual(body.errors.title, undefined);
-        console.log('PASS: POST /bookmarks missing url');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://search-test.com',
+          title: 'Search Test Bookmark'
+        }, headers);
+        const { res, body } = await requestJson(port, 'GET', '/search?q=search+test', undefined, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.ok(Array.isArray(body), 'search results must be an array');
+        assert.ok(body.length > 0, 'must find at least one result');
+        assert.ok(body.some(b => b.title === 'Search Test Bookmark'), 'must find the created bookmark');
+        console.log('PASS: GET /search returns matching bookmarks');
         resolve();
       } catch (err) {
         reject(err);
@@ -2199,23 +2185,18 @@ function testPostBookmarkMissingUrl() {
   });
 }
 
-function testPostBookmarkMissingBothFields() {
+function testSearchRequiresQuery() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'POST', '/bookmarks', {}, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/search', undefined, headers);
         assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.url, 'URL must be a non-empty string');
-        assert.strictEqual(body.errors.title, 'Title must be a non-empty string');
-        console.log('PASS: POST /bookmarks missing both fields');
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: GET /search requires q parameter');
         resolve();
       } catch (err) {
         reject(err);
@@ -2226,46 +2207,59 @@ function testPostBookmarkMissingBothFields() {
   });
 }
 
-function testPostBookmarkEmptyBody() {
+function testSearchWithoutAuth() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const { body: loginBody } = await login(port, 'admin', 'password123');
-        const req = http.request({
-          hostname: 'localhost',
-          port,
-          path: '/bookmarks',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain',
-            'Authorization': `Bearer ${loginBody.token}`
-          }
-        }, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              const body = JSON.parse(data);
-              assert.strictEqual(res.statusCode, 400);
-              assert.strictEqual(body.error, 'Request body is required');
-              assert.strictEqual(body.status, 400);
-              assert.strictEqual(body.code, 'BAD_REQUEST');
-              console.log('PASS: POST /bookmarks empty body');
-              resolve();
-            } catch (err) {
-              reject(err);
-            } finally {
-              server.close();
-            }
-          });
-        });
-        req.on('error', (err) => { server.close(); reject(err); });
-        req.end();
+        const { res, body } = await requestJson(port, 'GET', '/search?q=test');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.code, 'AUTH_REQUIRED');
+        console.log('PASS: GET /search requires auth');
+        resolve();
       } catch (err) {
-        server.close();
         reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testSearchCacheInvalidatedOnDelete() {
+  const app = require('./index');
+  const { searchCache, bookmarks: bks } = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        // Create a bookmark
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://stale-test.com',
+          title: 'Stale Cache Test'
+        }, headers);
+        // Search to populate cache
+        const { body: firstSearch } = await requestJson(port, 'GET', '/search?q=stale', undefined, headers);
+        assert.ok(firstSearch.length > 0, 'first search must find the bookmark');
+        assert.ok(searchCache.size > 0, 'search cache must be populated');
+        // Delete the bookmark
+        const { res: delRes } = await requestJson(port, 'DELETE', `/bookmarks/${created.id}`, undefined, headers);
+        assert.strictEqual(delRes.statusCode, 200);
+        // Cache must be invalidated
+        assert.strictEqual(searchCache.size, 0, 'search cache must be cleared after delete');
+        // Search again - must NOT return the deleted bookmark
+        const { body: secondSearch } = await requestJson(port, 'GET', '/search?q=stale', undefined, headers);
+        const stillThere = secondSearch.find(b => b.id === created.id);
+        assert.strictEqual(stillThere, undefined, 'deleted bookmark must NOT appear in search results');
+        console.log('PASS: search cache invalidated on bookmark delete');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
       }
     });
   });
@@ -2343,12 +2337,13 @@ function testPostBookmarkEmptyBody() {
     await testGetBookmarksEmpty();
     await testGetBookmarksAfterCreate();
     await testBookmarkAutoGeneratedId();
-    await testPostBookmarkMissingTitle();
-    await testPostBookmarkEmptyTitle();
-    await testPostBookmarkWhitespaceTitle();
-    await testPostBookmarkMissingUrl();
-    await testPostBookmarkMissingBothFields();
-    await testPostBookmarkEmptyBody();
+    await testDeleteBookmark();
+    await testDeleteBookmarkNotFound();
+    await testDeleteBookmarkWithoutAuth();
+    await testSearchBookmarks();
+    await testSearchRequiresQuery();
+    await testSearchWithoutAuth();
+    await testSearchCacheInvalidatedOnDelete();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);

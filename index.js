@@ -14,6 +14,7 @@ let requestCount = 0;
 let totalResponseTime = 0;
 const bookmarks = [];
 let nextBookmarkId = 1;
+const searchCache = new Map();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const JWT_EXPIRY = '1h';
 
@@ -311,6 +312,43 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(bookmarks);
 }));
 
+function invalidateSearchCache() {
+  searchCache.clear();
+}
+
+app.get('/search', authenticateToken, asyncHandler((req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  if (!q) {
+    return res.status(400).json(createErrorResponse(400, 'Query parameter q is required', 'BAD_REQUEST'));
+  }
+
+  if (searchCache.has(q)) {
+    return res.json(searchCache.get(q));
+  }
+
+  const results = bookmarks.filter(b =>
+    b.title.toLowerCase().includes(q) || b.url.toLowerCase().includes(q)
+  );
+  searchCache.set(q, results);
+  res.json(results);
+}));
+
+app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Invalid bookmark ID', 'BAD_REQUEST'));
+  }
+
+  const index = bookmarks.findIndex(b => b.id === id);
+  if (index === -1) {
+    return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
+  }
+
+  bookmarks.splice(index, 1);
+  invalidateSearchCache();
+  res.json({ deleted: true, id });
+}));
+
 app.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body || {};
 
@@ -417,3 +455,5 @@ module.exports.correlationId = correlationId;
 module.exports.authenticateToken = authenticateToken;
 module.exports.users = users;
 module.exports.JWT_SECRET = JWT_SECRET;
+module.exports.bookmarks = bookmarks;
+module.exports.searchCache = searchCache;
