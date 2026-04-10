@@ -178,6 +178,7 @@ app.get('/health', asyncHandler((req, res) => {
   }
   const elapsedMs = Date.now() - startTime;
   const mem = process.memoryUsage();
+  res.setHeader('Content-Type', 'application/json');
   res.json({
     status: 'ok',
     startedAt: new Date(startTime).toISOString(),
