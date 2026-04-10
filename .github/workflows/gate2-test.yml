@@ -1,7 +1,0 @@
-name: Gate2 Test CI
-on: push
-jobs:
-  fail-test:
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
