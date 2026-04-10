@@ -289,6 +289,9 @@ app.post('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   if (typeof url !== 'string' || url.trim().length === 0) {
     errors.url = 'URL must be a non-empty string';
   }
+  if (!errors.url && url.trim().length > 2048) {
+    errors.url = 'URL exceeds maximum length of 2048 characters';
+  }
   if (typeof title !== 'string' || title.trim().length === 0) {
     errors.title = 'Title must be a non-empty string';
   }
