@@ -7,3 +7,4 @@ Scratch project for testing Rook's coding capabilities.
 - `validateEmail` uses weak regex
 - No authentication middleware
 - Missing error handling in routes
+<!-- merge test -->
