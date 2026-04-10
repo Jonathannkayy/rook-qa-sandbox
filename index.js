@@ -311,6 +311,19 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(bookmarks);
 }));
 
+app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Invalid bookmark ID', 'BAD_REQUEST'));
+  }
+  const index = bookmarks.findIndex(b => b.id === id);
+  if (index === -1) {
+    return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
+  }
+  bookmarks.splice(index, 1);
+  res.status(204).send();
+}));
+
 app.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body || {};
 
