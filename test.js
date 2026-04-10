@@ -53,6 +53,7 @@ function testHealthEndpoint() {
           try {
             const body = JSON.parse(data);
             assert.strictEqual(res.statusCode, 200);
+            assert.ok(res.headers['content-type'].includes('application/json'), 'Content-Type must be application/json');
             assert.strictEqual(body.status, 'ok');
             // Uptime fields
             assert.strictEqual(typeof body.startedAt, 'string');
@@ -113,6 +114,36 @@ function testHealthMemoryUsage() {
             // sanity: heapUsed <= heapTotal <= rss (typical invariant)
             assert.ok(body.memory.heapUsed <= body.memory.heapTotal, 'heapUsed <= heapTotal');
             console.log('PASS: health memory usage');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      }).on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+    });
+  });
+}
+
+function testHealthContentType() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      http.get(`http://localhost:${port}/health`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            assert.strictEqual(res.statusCode, 200);
+            assert.ok(res.headers['content-type'], 'Content-Type header must be present');
+            assert.ok(res.headers['content-type'].includes('application/json'), 'Content-Type must be application/json, got: ' + res.headers['content-type']);
+            assert.ok(!res.headers['content-type'].includes('text/plain'), 'Content-Type must not be text/plain');
+            console.log('PASS: health content-type');
             resolve();
           } catch (err) {
             reject(err);
@@ -2091,6 +2122,7 @@ function testAuthRateLimitEnforced() {
     testRequestLoggerExport();
     await testHealthEndpoint();
     await testHealthMemoryUsage();
+    await testHealthContentType();
     testFormatUptime();
     await testVersionEndpoint();
     await testValidateEndpointSuccess();
