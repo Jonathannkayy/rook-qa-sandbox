@@ -312,6 +312,20 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(sorted);
 }));
 
+app.get('/bookmarks/search', authenticateToken, asyncHandler((req, res) => {
+  const q = req.query.q;
+  if (!q || (typeof q === 'string' && q.trim().length === 0)) {
+    return res.status(400).json(createErrorResponse(400, 'Query parameter "q" is required', 'BAD_REQUEST'));
+  }
+  const query = q.trim().toLowerCase();
+  const results = bookmarks.filter(b => {
+    const title = (b.title || '').toLowerCase();
+    const url = (b.url || '').toLowerCase();
+    return title.includes(query) || url.includes(query);
+  });
+  res.json({ bookmarks: results });
+}));
+
 app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {
@@ -326,6 +340,9 @@ app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 
 app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
+  }
   const index = bookmarks.findIndex(b => b.id === id);
 
   if (index === -1) {
