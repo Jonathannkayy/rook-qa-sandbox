@@ -308,7 +308,8 @@ app.post('/bookmarks', authenticateToken, asyncHandler((req, res) => {
 }));
 
 app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
-  res.json(bookmarks);
+  const sorted = bookmarks.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  res.json(sorted);
 }));
 
 app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
