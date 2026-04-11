@@ -364,6 +364,36 @@ app.patch('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 
   res.json(bookmark);
 }));
+
+app.put('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
+  }
+
+  const bookmark = bookmarks.find(b => b.id === id);
+  if (!bookmark) {
+    return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
+  }
+
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const missingFields = [];
+  if (body.url === undefined || body.url === null || (typeof body.url === 'string' && body.url.trim().length === 0)) {
+    missingFields.push('url');
+  }
+  if (body.title === undefined || body.title === null || (typeof body.title === 'string' && body.title.trim().length === 0)) {
+    missingFields.push('title');
+  }
+
+  if (missingFields.length > 0) {
+    return res.status(400).json(createErrorResponse(400, 'Missing required fields', 'BAD_REQUEST', { missingFields }));
+  }
+
+  bookmark.url = typeof body.url === 'string' ? body.url.trim() : body.url;
+  bookmark.title = typeof body.title === 'string' ? body.title.trim() : body.title;
+
+  res.json(bookmark);
+}));
 app.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body || {};
 

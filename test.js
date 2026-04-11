@@ -2381,6 +2381,114 @@ function testPatchBookmarkWithoutAuth() {
   });
 }
 
+function testPutBookmarkAllCases() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+
+        // Test: without auth returns 401
+        const noAuth = await requestJson(port, 'PUT', '/bookmarks/1', {
+          url: 'https://example.com',
+          title: 'Test'
+        });
+        assert.strictEqual(noAuth.res.statusCode, 401);
+        assert.strictEqual(noAuth.body.error, 'Authentication required');
+        assert.strictEqual(noAuth.body.code, 'AUTH_REQUIRED');
+        console.log('PASS: PUT /bookmarks/:id without auth returns 401');
+
+        // Test: invalid id returns 400
+        const invalidId = await requestJson(port, 'PUT', '/bookmarks/abc', {
+          url: 'https://example.com',
+          title: 'Test'
+        }, headers);
+        assert.strictEqual(invalidId.res.statusCode, 400);
+        assert.strictEqual(invalidId.body.error, 'Bookmark ID must be a number');
+        assert.strictEqual(invalidId.body.status, 400);
+        assert.strictEqual(invalidId.body.code, 'BAD_REQUEST');
+        console.log('PASS: PUT /bookmarks/:id invalid id returns 400');
+
+        // Test: not found returns 404
+        const notFound = await requestJson(port, 'PUT', '/bookmarks/999999', {
+          url: 'https://example.com',
+          title: 'Test'
+        }, headers);
+        assert.strictEqual(notFound.res.statusCode, 404);
+        assert.strictEqual(notFound.body.error, 'Bookmark not found');
+        assert.strictEqual(notFound.body.status, 404);
+        assert.strictEqual(notFound.body.code, 'NOT_FOUND');
+        console.log('PASS: PUT /bookmarks/:id not found returns 404');
+
+        // Create a bookmark for remaining tests
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://original.com',
+          title: 'Original'
+        }, headers);
+
+        // Test: missing url returns 400
+        const missingUrl = await requestJson(port, 'PUT', `/bookmarks/${created.id}`, {
+          title: 'Only Title'
+        }, headers);
+        assert.strictEqual(missingUrl.res.statusCode, 400);
+        assert.strictEqual(missingUrl.body.error, 'Missing required fields');
+        assert.strictEqual(missingUrl.body.status, 400);
+        assert.strictEqual(missingUrl.body.code, 'BAD_REQUEST');
+        assert.deepStrictEqual(missingUrl.body.missingFields, ['url']);
+        console.log('PASS: PUT /bookmarks/:id missing url returns 400');
+
+        // Test: missing title returns 400
+        const missingTitle = await requestJson(port, 'PUT', `/bookmarks/${created.id}`, {
+          url: 'https://new-url.com'
+        }, headers);
+        assert.strictEqual(missingTitle.res.statusCode, 400);
+        assert.strictEqual(missingTitle.body.error, 'Missing required fields');
+        assert.strictEqual(missingTitle.body.status, 400);
+        assert.strictEqual(missingTitle.body.code, 'BAD_REQUEST');
+        assert.deepStrictEqual(missingTitle.body.missingFields, ['title']);
+        console.log('PASS: PUT /bookmarks/:id missing title returns 400');
+
+        // Test: missing both returns 400
+        const missingBoth = await requestJson(port, 'PUT', `/bookmarks/${created.id}`, {}, headers);
+        assert.strictEqual(missingBoth.res.statusCode, 400);
+        assert.strictEqual(missingBoth.body.error, 'Missing required fields');
+        assert.strictEqual(missingBoth.body.status, 400);
+        assert.strictEqual(missingBoth.body.code, 'BAD_REQUEST');
+        assert.deepStrictEqual(missingBoth.body.missingFields, ['url', 'title']);
+        console.log('PASS: PUT /bookmarks/:id missing both returns 400');
+
+        // Test: successful full update
+        const success = await requestJson(port, 'PUT', `/bookmarks/${created.id}`, {
+          url: 'https://replaced.com',
+          title: 'Replaced'
+        }, headers);
+        assert.strictEqual(success.res.statusCode, 200);
+        assert.strictEqual(success.body.url, 'https://replaced.com');
+        assert.strictEqual(success.body.title, 'Replaced');
+        assert.strictEqual(success.body.id, created.id);
+        assert.strictEqual(success.body.created_at, created.created_at);
+        console.log('PASS: PUT /bookmarks/:id success');
+
+        // Test: PUT replaces all fields (verify via GET)
+        const { body: fetched } = await requestJson(port, 'GET', `/bookmarks/${created.id}`, undefined, headers);
+        assert.strictEqual(fetched.url, 'https://replaced.com');
+        assert.strictEqual(fetched.title, 'Replaced');
+        assert.strictEqual(fetched.id, created.id);
+        assert.strictEqual(fetched.created_at, created.created_at);
+        console.log('PASS: PUT /bookmarks/:id replaces all fields (verified via GET)');
+
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -2464,6 +2572,7 @@ function testPatchBookmarkWithoutAuth() {
     await testPatchBookmarkInvalidId();
     await testPatchBookmarkUnknownFields();
     await testPatchBookmarkWithoutAuth();
+    await testPutBookmarkAllCases();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
