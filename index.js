@@ -314,7 +314,7 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
 
 app.get('/bookmarks/search', authenticateToken, asyncHandler((req, res) => {
   const q = req.query.q;
-  if (!q || (typeof q === 'string' && q.trim().length === 0)) {
+  if (typeof q !== 'string' || q.trim().length === 0) {
     return res.status(400).json(createErrorResponse(400, 'Query parameter "q" is required', 'BAD_REQUEST'));
   }
   const query = q.trim().toLowerCase();

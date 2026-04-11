@@ -2695,6 +2695,31 @@ function testSearchBookmarksWithoutAuth() {
   });
 }
 
+function testSearchBookmarksNonStringQ() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        // Pass q as an array (e.g. ?q=a&q=b)
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search?q=a&q=b', undefined, headers);
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        assert.ok(body.error.includes('q'), 'error must mention q parameter');
+        console.log('PASS: search bookmarks non-string q returns 400');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 function testDeleteBookmarkSuccess() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
@@ -2890,6 +2915,7 @@ function testDeleteBookmarkWithoutAuth() {
     await testSearchBookmarksNoMatches();
     await testSearchBookmarksMatchesUrl();
     await testSearchBookmarksWithoutAuth();
+    await testSearchBookmarksNonStringQ();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
