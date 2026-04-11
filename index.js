@@ -473,6 +473,44 @@ app.use((req, res, next) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
+  // Only expose safe, sanitized message - never leak stack traces or internal details
+  let message = err.message || 'Internal Server Error';
+  // Sanitize: detect stack traces, file paths, or obvious internal errors
+  const hasNewline = message.includes('\n');
+  const hasAtSymbol = message.includes('at ');
+  const hasFilePath = /:\d+:/.test(message); // matches ":123:" style line numbers
+  if (hasNewline || hasAtSymbol || hasFilePath) {
+    message = 'Internal Server Error';
+  }
+  const code = err.code || 'INTERNAL_ERROR';
+  if (process.env.NODE_ENV !== 'test') {
+    // Log safe error info only - never log full error object which may contain stack traces
+    console.error(`[ERROR] ${req.method} ${req.path}: ${statusCode} ${code}`);
+  }
+  res.status(statusCode).json(createErrorResponse(statusCode, message, code));
+});
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const statusCode = err.statusCode || 500;
+  // Only expose safe, sanitized message - never leak stack traces or internal details
+  let message = err.message || 'Internal Server Error';
+  // Sanitize: detect stack traces, file paths, or obvious internal errors
+  const hasNewline = message.includes('\n');
+  const hasAtSymbol = message.includes('at ');
+  const hasFilePath = /:\d+:/.test(message); // matches ":123:" style line numbers
+  if (hasNewline || hasAtSymbol || hasFilePath) {
+    message = 'Internal Server Error';
+  }
+  const code = err.code || 'INTERNAL_ERROR';
+  if (process.env.NODE_ENV !== 'test') {
+    // Log safe error info only - never log full error object which may contain stack traces
+    console.error(`[ERROR] ${req.method} ${req.path}: ${statusCode} ${code}`);
+  }
+  res.status(statusCode).json(createErrorResponse(statusCode, message, code));
+});
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
   const code = err.code || 'INTERNAL_ERROR';
   if (process.env.NODE_ENV !== 'test') {

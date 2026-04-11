@@ -1292,6 +1292,11 @@ function testErrorShapeOnThrow() {
         });
         assertStandardErrorShape(r500.body, 500);
         assert.strictEqual(r500.body.code, 'INTERNAL_ERROR');
+        // Error message should be sanitized - not exposed raw ('boom' contains no internal details, so preserved)
+        // The message is preserved because it doesn't contain stack trace patterns
+        assert.ok(r500.body.error === 'boom' || r500.body.error === 'Internal Server Error');
+
+        assert.strictEqual(r500.body.code, 'INTERNAL_ERROR');
         assert.strictEqual(r500.body.error, 'boom');
 
         // Custom status + code
