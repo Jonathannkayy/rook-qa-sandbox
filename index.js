@@ -312,6 +312,18 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(sorted);
 }));
 
+app.get('/bookmarks/search', authenticateToken, asyncHandler((req, res) => {
+  const q = req.query.q;
+  if (q === undefined || q === null || (typeof q === 'string' && q.trim().length === 0)) {
+    return res.status(400).json(createErrorResponse(400, 'Missing required query parameter: q', 'BAD_REQUEST'));
+  }
+  const query = q.trim().toLowerCase();
+  const results = bookmarks.filter(b =>
+    b.title.toLowerCase().includes(query) || b.url.toLowerCase().includes(query)
+  );
+  res.json(results);
+}));
+
 app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {

@@ -2494,6 +2494,175 @@ function testPutBookmarkAllCases() {
   });
 }
 
+function testSearchBookmarksMissingQ() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search', undefined, headers);
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Missing required query parameter: q');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: GET /bookmarks/search missing q returns 400');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testSearchBookmarksEmptyQ() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search?q=', undefined, headers);
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Missing required query parameter: q');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: GET /bookmarks/search empty q returns 400');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testSearchBookmarksWhitespaceQ() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search?q=%20%20', undefined, headers);
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Missing required query parameter: q');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: GET /bookmarks/search whitespace q returns 400');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testSearchBookmarksWithoutAuth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search?q=test');
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.error, 'Authentication required');
+        assert.strictEqual(body.code, 'AUTH_REQUIRED');
+        console.log('PASS: GET /bookmarks/search without auth returns 401');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testSearchBookmarksReturnsResults() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        // Create bookmarks to search
+        await requestJson(port, 'POST', '/bookmarks', { url: 'https://example.com', title: 'Example Site' }, headers);
+        await requestJson(port, 'POST', '/bookmarks', { url: 'https://nodejs.org', title: 'Node.js Docs' }, headers);
+        await requestJson(port, 'POST', '/bookmarks', { url: 'https://example.org/test', title: 'Another Page' }, headers);
+        // Search by title
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search?q=example', undefined, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.ok(Array.isArray(body), 'response must be an array');
+        assert.ok(body.length >= 2, 'must find at least 2 bookmarks matching "example"');
+        assert.ok(body.every(b => b.title.toLowerCase().includes('example') || b.url.toLowerCase().includes('example')));
+        console.log('PASS: GET /bookmarks/search returns matching results');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testSearchBookmarksNoResults() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search?q=zzzznonexistent', undefined, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.ok(Array.isArray(body), 'response must be an array');
+        assert.strictEqual(body.length, 0, 'must return empty array when no matches');
+        console.log('PASS: GET /bookmarks/search no results returns empty array');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testSearchBookmarksCaseInsensitive() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        await requestJson(port, 'POST', '/bookmarks', { url: 'https://test.com', title: 'My Fancy Bookmark' }, headers);
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/search?q=FANCY', undefined, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.ok(Array.isArray(body), 'response must be an array');
+        assert.ok(body.length >= 1, 'must find at least 1 bookmark matching "FANCY" case-insensitively');
+        console.log('PASS: GET /bookmarks/search is case-insensitive');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -2577,6 +2746,13 @@ function testPutBookmarkAllCases() {
     await testPatchBookmarkInvalidId();
     await testPatchBookmarkUnknownFields();
     await testPatchBookmarkWithoutAuth();
+    await testSearchBookmarksMissingQ();
+    await testSearchBookmarksEmptyQ();
+    await testSearchBookmarksWhitespaceQ();
+    await testSearchBookmarksWithoutAuth();
+    await testSearchBookmarksReturnsResults();
+    await testSearchBookmarksNoResults();
+    await testSearchBookmarksCaseInsensitive();
     await testPutBookmarkAllCases();
     console.log('All tests passed');
   } catch(e) {
