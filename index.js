@@ -311,6 +311,18 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(bookmarks);
 }));
 
+app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
+  }
+  const bookmark = bookmarks.find(b => b.id === id);
+  if (!bookmark) {
+    return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
+  }
+  res.json(bookmark);
+}));
+
 app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   const id = parseInt(req.params.id, 10);
   const index = bookmarks.findIndex(b => b.id === id);
@@ -323,6 +335,35 @@ app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   res.json({ deleted: true, id });
 }));
 
+app.patch('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
+  }
+
+  const bookmark = bookmarks.find(b => b.id === id);
+  if (!bookmark) {
+    return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
+  }
+
+  const allowedFields = ['url', 'title'];
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const providedFields = Object.keys(body);
+  const unknownFields = providedFields.filter(f => !allowedFields.includes(f));
+
+  if (unknownFields.length > 0) {
+    return res.status(422).json(createErrorResponse(422, 'Unrecognized fields', 'UNPROCESSABLE_ENTITY', { fields: unknownFields }));
+  }
+
+  if (body.url !== undefined) {
+    bookmark.url = typeof body.url === 'string' ? body.url.trim() : body.url;
+  }
+  if (body.title !== undefined) {
+    bookmark.title = typeof body.title === 'string' ? body.title.trim() : body.title;
+  }
+
+  res.json(bookmark);
+}));
 app.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body || {};
 

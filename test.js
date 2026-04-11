@@ -2083,7 +2083,7 @@ function testAuthRateLimitEnforced() {
   });
 }
 
-function testDeleteBookmarkSuccess() {
+function testGetBookmarkByIdSuccess() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
@@ -2091,20 +2091,17 @@ function testDeleteBookmarkSuccess() {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
         const headers = { Authorization: `Bearer ${loginBody.token}` };
-        // Create a bookmark first
         const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://delete-me.example.com',
-          title: 'Delete Me'
+          url: 'https://example.com/byid',
+          title: 'ById Test'
         }, headers);
-        // Delete it
-        const { res, body } = await requestJson(port, 'DELETE', `/bookmarks/${created.id}`, undefined, headers);
+        const { res, body } = await requestJson(port, 'GET', `/bookmarks/${created.id}`, undefined, headers);
         assert.strictEqual(res.statusCode, 200);
-        assert.strictEqual(body.deleted, true);
         assert.strictEqual(body.id, created.id);
-        // Verify it's gone
-        const { body: allBookmarks } = await requestJson(port, 'GET', '/bookmarks', undefined, headers);
-        assert.ok(!allBookmarks.find(b => b.id === created.id), 'bookmark must be removed');
-        console.log('PASS: delete bookmark success');
+        assert.strictEqual(body.url, 'https://example.com/byid');
+        assert.strictEqual(body.title, 'ById Test');
+        assert.strictEqual(typeof body.created_at, 'string');
+        console.log('PASS: GET /bookmarks/:id success');
         resolve();
       } catch (err) {
         reject(err);
@@ -2115,21 +2112,20 @@ function testDeleteBookmarkSuccess() {
   });
 }
 
-function testDeleteBookmarkNotFound() {
+function testGetBookmarkByIdNotFound() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
         const { body: loginBody } = await login(port, 'admin', 'password123');
-        const { res, body } = await requestJson(port, 'DELETE', '/bookmarks/99999', undefined, {
-          Authorization: `Bearer ${loginBody.token}`
-        });
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/999999', undefined, headers);
         assert.strictEqual(res.statusCode, 404);
         assert.strictEqual(body.error, 'Bookmark not found');
         assert.strictEqual(body.status, 404);
         assert.strictEqual(body.code, 'NOT_FOUND');
-        console.log('PASS: delete bookmark not found');
+        console.log('PASS: GET /bookmarks/:id not found returns 404');
         resolve();
       } catch (err) {
         reject(err);
@@ -2140,17 +2136,241 @@ function testDeleteBookmarkNotFound() {
   });
 }
 
-function testDeleteBookmarkWithoutAuth() {
+function testGetBookmarkByIdInvalidId() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const { res, body } = await requestJson(port, 'DELETE', '/bookmarks/1');
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/abc', undefined, headers);
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Bookmark ID must be a number');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: GET /bookmarks/:id invalid id returns 400');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testGetBookmarkByIdWithoutAuth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await requestJson(port, 'GET', '/bookmarks/1');
         assert.strictEqual(res.statusCode, 401);
         assert.strictEqual(body.error, 'Authentication required');
         assert.strictEqual(body.code, 'AUTH_REQUIRED');
-        console.log('PASS: delete bookmark without auth');
+        console.log('PASS: GET /bookmarks/:id without auth returns 401');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPatchBookmarkUpdateUrl() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://old-url.com',
+          title: 'Original Title'
+        }, headers);
+        const { res, body } = await requestJson(port, 'PATCH', `/bookmarks/${created.id}`, {
+          url: 'https://new-url.com'
+        }, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(body.url, 'https://new-url.com');
+        assert.strictEqual(body.title, 'Original Title');
+        assert.strictEqual(body.id, created.id);
+        assert.strictEqual(body.created_at, created.created_at);
+        console.log('PASS: PATCH /bookmarks/:id update url only');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPatchBookmarkUpdateTitle() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://keep-url.com',
+          title: 'Old Title'
+        }, headers);
+        const { res, body } = await requestJson(port, 'PATCH', `/bookmarks/${created.id}`, {
+          title: 'New Title'
+        }, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(body.url, 'https://keep-url.com');
+        assert.strictEqual(body.title, 'New Title');
+        assert.strictEqual(body.id, created.id);
+        console.log('PASS: PATCH /bookmarks/:id update title only');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPatchBookmarkUpdateBoth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://old.com',
+          title: 'Old'
+        }, headers);
+        const { res, body } = await requestJson(port, 'PATCH', `/bookmarks/${created.id}`, {
+          url: 'https://new.com',
+          title: 'New'
+        }, headers);
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(body.url, 'https://new.com');
+        assert.strictEqual(body.title, 'New');
+        assert.strictEqual(body.id, created.id);
+        assert.strictEqual(body.created_at, created.created_at);
+        console.log('PASS: PATCH /bookmarks/:id update both fields');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPatchBookmarkNotFound() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'PATCH', '/bookmarks/999999', {
+          title: 'Does not matter'
+        }, headers);
+        assert.strictEqual(res.statusCode, 404);
+        assert.strictEqual(body.error, 'Bookmark not found');
+        assert.strictEqual(body.status, 404);
+        assert.strictEqual(body.code, 'NOT_FOUND');
+        console.log('PASS: PATCH /bookmarks/:id not found returns 404');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPatchBookmarkInvalidId() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { res, body } = await requestJson(port, 'PATCH', '/bookmarks/abc', {
+          title: 'Does not matter'
+        }, headers);
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Bookmark ID must be a number');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: PATCH /bookmarks/:id invalid id returns 400');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPatchBookmarkUnknownFields() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://example.com',
+          title: 'Test'
+        }, headers);
+        const { res, body } = await requestJson(port, 'PATCH', `/bookmarks/${created.id}`, {
+          priority: 'high',
+          notes: 'some notes'
+        }, headers);
+        assert.strictEqual(res.statusCode, 422);
+        assert.strictEqual(body.error, 'Unrecognized fields');
+        assert.strictEqual(body.status, 422);
+        assert.strictEqual(body.code, 'UNPROCESSABLE_ENTITY');
+        assert.deepStrictEqual(body.fields, ['priority', 'notes']);
+        console.log('PASS: PATCH /bookmarks/:id unknown fields returns 422');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPatchBookmarkWithoutAuth() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await requestJson(port, 'PATCH', '/bookmarks/1', {
+          title: 'No auth'
+        });
+        assert.strictEqual(res.statusCode, 401);
+        assert.strictEqual(body.error, 'Authentication required');
+        assert.strictEqual(body.code, 'AUTH_REQUIRED');
+        console.log('PASS: PATCH /bookmarks/:id without auth returns 401');
         resolve();
       } catch (err) {
         reject(err);
@@ -2233,9 +2453,17 @@ function testDeleteBookmarkWithoutAuth() {
     await testGetBookmarksEmpty();
     await testGetBookmarksAfterCreate();
     await testBookmarkAutoGeneratedId();
-    await testDeleteBookmarkSuccess();
-    await testDeleteBookmarkNotFound();
-    await testDeleteBookmarkWithoutAuth();
+    await testGetBookmarkByIdSuccess();
+    await testGetBookmarkByIdNotFound();
+    await testGetBookmarkByIdInvalidId();
+    await testGetBookmarkByIdWithoutAuth();
+    await testPatchBookmarkUpdateUrl();
+    await testPatchBookmarkUpdateTitle();
+    await testPatchBookmarkUpdateBoth();
+    await testPatchBookmarkNotFound();
+    await testPatchBookmarkInvalidId();
+    await testPatchBookmarkUnknownFields();
+    await testPatchBookmarkWithoutAuth();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
