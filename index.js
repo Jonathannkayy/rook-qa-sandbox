@@ -311,6 +311,18 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(bookmarks);
 }));
 
+app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const index = bookmarks.findIndex(b => b.id === id);
+
+  if (index === -1) {
+    return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
+  }
+
+  bookmarks.splice(index, 1);
+  res.json({ deleted: true, id });
+}));
+
 app.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body || {};
 
