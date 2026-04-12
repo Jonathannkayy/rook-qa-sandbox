@@ -1395,7 +1395,6 @@ function testErrorShapeOnThrow() {
         // The message is preserved because it doesn't contain stack trace patterns
         assert.ok(r500.body.error === 'boom' || r500.body.error === 'Internal Server Error');
 
-
         // Custom status + code
         const r403 = await new Promise((res, rej) => {
           http.get(`http://localhost:${port}/err-with-code`, (resp) => {
@@ -2591,6 +2590,38 @@ function testPutBookmarkAllCases() {
   });
 }
 
+function testPutBookmarkRejectsIdInBody() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://put-id-reject.example.com',
+          title: 'ID Reject Test'
+        }, headers);
+        const { res, body } = await requestJson(port, 'PUT', `/bookmarks/${created.id}`, {
+          id: 999,
+          url: 'https://new-url.com',
+          title: 'New Title'
+        }, headers);
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'ID cannot be changed in request body');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: PUT /bookmarks/:id rejects id in body');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 function testSearchBookmarksMissingQ() {
   const app = require('./index');
   return new Promise((resolve, reject) => {
@@ -3134,6 +3165,7 @@ function testPostBookmarkDuplicateUrl() {
     await testPatchBookmarkUnknownFields();
     await testPatchBookmarkWithoutAuth();
     await testPutBookmarkAllCases();
+    await testPutBookmarkRejectsIdInBody();
     await testSearchBookmarksMissingQ();
     await testSearchBookmarksEmptyQ();
     await testSearchBookmarksWhitespaceQ();

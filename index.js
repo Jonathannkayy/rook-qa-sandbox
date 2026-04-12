@@ -219,7 +219,7 @@ app.get('/health', asyncHandler(async (req, res) => {
   );
   const checks = results.map((r, i) => {
     if (r.status === 'fulfilled') return r.value;
-    return { name: dependencyChecks[i].name, ok: false, error: r.reason?.message };
+    return { name: dependencyChecks[i].name, ok: false, error: 'dependency check failed' };
   });
   const allHealthy = checks.every(c => c.ok);
   const status = allHealthy ? 'ok' : 'error';
@@ -605,7 +605,6 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json(createErrorResponse(statusCode, message, code));
 });
 
-
 module.exports = app;
 module.exports.parseUserInput = parseUserInput;
 module.exports.validateEmail = validateEmail;
@@ -628,4 +627,3 @@ module.exports.users = users;
 module.exports.JWT_SECRET = JWT_SECRET;
 module.exports.validateHexColor = validateHexColor;
 module.exports.tags = tags;
-// Rate limit configuration - configurable window
