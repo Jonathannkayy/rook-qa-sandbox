@@ -174,14 +174,27 @@ function formatUptime(ms) {
   return parts.join(' ');
 }
 
-app.get('/health', asyncHandler((req, res) => {
+app.get('/health', asyncHandler(async (req, res) => {
   if (Object.keys(req.query).length > 0) {
     return res.status(400).json(createErrorResponse(400, 'Health endpoint does not accept query parameters', 'BAD_REQUEST'));
   }
   const elapsedMs = Date.now() - startTime;
   const mem = process.memoryUsage();
-  res.json({
-    status: 'ok',
+  const results = await Promise.allSettled(
+    dependencyChecks.map(async (dep) => {
+      const ok = await dep.check();
+      return { name: dep.name, ok: !!ok };
+    })
+  );
+  const checks = results.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value;
+    return { name: dependencyChecks[i].name, ok: false, error: r.reason?.message };
+  });
+  const allHealthy = checks.every(c => c.ok);
+  const status = allHealthy ? 'ok' : 'error';
+  const httpStatus = allHealthy ? 200 : 503;
+  res.status(httpStatus).json({
+    status,
     startedAt: new Date(startTime).toISOString(),
     uptime_seconds: Math.floor(elapsedMs / 1000),
     uptime: formatUptime(elapsedMs),
@@ -191,7 +204,8 @@ app.get('/health', asyncHandler((req, res) => {
       heapUsed: mem.heapUsed,
       heapTotal: mem.heapTotal,
       external: mem.external
-    }
+    },
+    checks
   });
 }));
 

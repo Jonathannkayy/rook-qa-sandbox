@@ -1418,7 +1418,7 @@ function testCorrelationIdGenerated() {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, () => {
       const port = server.address().port;
-      http.get(`http://localhost:${port}/health`, (res) => {
+      http.get(`http://localhost:${port}/version`, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
@@ -1455,7 +1455,7 @@ function testCorrelationIdPropagated() {
       const req = http.request({
         hostname: 'localhost',
         port,
-        path: '/health',
+        path: '/version',
         method: 'GET',
         headers: { 'X-Correlation-ID': 'my-custom-correlation-id' }
       }, (res) => {
