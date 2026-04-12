@@ -219,12 +219,13 @@ app.get('/health', asyncHandler(async (req, res) => {
   );
   const checks = results.map((r, i) => {
     if (r.status === 'fulfilled') return r.value;
-    return { name: dependencyChecks[i].name, ok: false, error: r.reason?.message };
+    return { name: dependencyChecks[i].name, ok: false, error: 'dependency check failed' };
   });
   const allHealthy = checks.every(c => c.ok);
   const status = allHealthy ? 'ok' : 'error';
-  const httpStatus = allHealthy ? 200 : 503;
-  res.status(httpStatus).json({
+  // Health is a liveness probe - always returns 200 unless the app itself is dead
+  // Use /ready for readiness probe that returns 503 when dependencies fail
+  res.status(200).json({
     status,
     startedAt: new Date(startTime).toISOString(),
     uptime_seconds: Math.floor(elapsedMs / 1000),
@@ -348,6 +349,12 @@ app.post('/bookmarks', authenticateToken, asyncHandler((req, res) => {
     return res.status(400).json(createErrorResponse(400, 'Validation failed', 'VALIDATION_ERROR', { errors }));
   }
 
+  // Check for duplicate URL
+  const existingBookmark = bookmarks.find(b => b.url === url.trim());
+  if (existingBookmark) {
+    return res.status(409).json(createErrorResponse(409, 'Bookmark with this URL already exists', 'DUPLICATE', { existing: existingBookmark }));
+  }
+
   const bookmark = {
     id: nextBookmarkId++,
     url: url.trim(),
@@ -446,6 +453,12 @@ app.put('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   }
 
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+
+  // Reject if body contains id field - ID comes from URL only
+  if ('id' in body) {
+    return res.status(400).json(createErrorResponse(400, 'ID cannot be changed in request body', 'BAD_REQUEST'));
+  }
+
   const missingFields = [];
   if (body.url === undefined || body.url === null || (typeof body.url === 'string' && body.url.trim().length === 0)) {
     missingFields.push('url');
@@ -504,7 +517,7 @@ app.get('/ready', asyncHandler(async (req, res) => {
   );
   const checks = results.map((r, i) => {
     if (r.status === 'fulfilled') return r.value;
-    return { name: dependencyChecks[i].name, ready: false, error: r.reason?.message };
+    return { name: dependencyChecks[i].name, ready: false, error: 'dependency check failed' };
   });
   const allReady = checks.every(c => c.ready);
   res.status(allReady ? 200 : 503).json({ ready: allReady, checks });
@@ -591,7 +604,6 @@ app.use((err, req, res, next) => {
   }
   res.status(statusCode).json(createErrorResponse(statusCode, message, code));
 });
-
 
 module.exports = app;
 module.exports.parseUserInput = parseUserInput;
