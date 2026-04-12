@@ -530,3 +530,4 @@ module.exports.correlationId = correlationId;
 module.exports.authenticateToken = authenticateToken;
 module.exports.users = users;
 module.exports.JWT_SECRET = JWT_SECRET;
+// Rate limit configuration - configurable window
