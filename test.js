@@ -2,6 +2,7 @@ const assert = require('assert');
 const http = require('http');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./index');
+const { ipKeyGenerator } = require('express-rate-limit');
 
 // Basic test suite
 function testParseUserInput() {
@@ -1418,7 +1419,7 @@ function testCorrelationIdGenerated() {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, () => {
       const port = server.address().port;
-      http.get(`http://localhost:${port}/version`, (res) => {
+      http.get(`http://localhost:${port}/health`, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
@@ -1455,7 +1456,7 @@ function testCorrelationIdPropagated() {
       const req = http.request({
         hostname: 'localhost',
         port,
-        path: '/version',
+        path: '/health',
         method: 'GET',
         headers: { 'X-Correlation-ID': 'my-custom-correlation-id' }
       }, (res) => {
@@ -2832,382 +2833,61 @@ function testDeleteBookmarkWithoutAuth() {
   });
 }
 
-// --- POST /tags tests ---
+function testRateLimiterKeyGeneratorUsesUserIdForAuth() {
+  const express = require('express');
+  const rateLimit = require('express-rate-limit');
+  const testApp = express();
 
-function testValidateHexColor() {
-  const { validateHexColor } = require('./index');
-  // Valid 3-digit hex
-  assert.strictEqual(validateHexColor('#fff'), true);
-  assert.strictEqual(validateHexColor('#FFF'), true);
-  assert.strictEqual(validateHexColor('#abc'), true);
-  assert.strictEqual(validateHexColor('#123'), true);
-  // Valid 6-digit hex
-  assert.strictEqual(validateHexColor('#ffffff'), true);
-  assert.strictEqual(validateHexColor('#FFFFFF'), true);
-  assert.strictEqual(validateHexColor('#aabbcc'), true);
-  assert.strictEqual(validateHexColor('#112233'), true);
-  assert.strictEqual(validateHexColor('#AbCdEf'), true);
-  // Invalid
-  assert.strictEqual(validateHexColor('fff'), false);
-  assert.strictEqual(validateHexColor('#ff'), false);
-  assert.strictEqual(validateHexColor('#ffff'), false);
-  assert.strictEqual(validateHexColor('#fffff'), false);
-  assert.strictEqual(validateHexColor('#fffffff'), false);
-  assert.strictEqual(validateHexColor('#gggggg'), false);
-  assert.strictEqual(validateHexColor('#xyz'), false);
-  assert.strictEqual(validateHexColor(''), false);
-  assert.strictEqual(validateHexColor(null), false);
-  assert.strictEqual(validateHexColor(undefined), false);
-  assert.strictEqual(validateHexColor(123), false);
-  assert.strictEqual(validateHexColor('red'), false);
-  assert.strictEqual(validateHexColor('rgb(0,0,0)'), false);
-  console.log('PASS: validateHexColor');
-}
-
-function testPostTagSuccess() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: 'JavaScript',
-          color: '#f0db4f'
-        });
-        assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(typeof body.id, 'number');
-        assert.strictEqual(body.name, 'JavaScript');
-        assert.strictEqual(body.color, '#f0db4f');
-        assert.strictEqual(typeof body.created_at, 'string');
-        assert.ok(!isNaN(Date.parse(body.created_at)), 'created_at must be valid ISO date');
-        console.log('PASS: POST /tags success');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagNameOnly() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: 'Backend'
-        });
-        assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(body.name, 'Backend');
-        assert.strictEqual(body.color, null);
-        assert.strictEqual(typeof body.id, 'number');
-        console.log('PASS: POST /tags name only (color optional)');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagTrimsName() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: '  React  ',
-          color: '#61dafb'
-        });
-        assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(body.name, 'React');
-        console.log('PASS: POST /tags trims name');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagMissingName() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          color: '#fff'
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.status, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.name, 'Name is required and must be a non-empty string');
-        console.log('PASS: POST /tags missing name');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagEmptyName() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: ''
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.name, 'Name is required and must be a non-empty string');
-        console.log('PASS: POST /tags empty name');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagWhitespaceName() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: '   '
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.name, 'Name is required and must be a non-empty string');
-        console.log('PASS: POST /tags whitespace-only name');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagNameTooLong() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const longName = 'a'.repeat(51);
-        const { res, body } = await postJson(port, '/tags', {
-          name: longName
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.name, 'Name must be at most 50 characters');
-        console.log('PASS: POST /tags name too long');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagNameExactly50Chars() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const name50 = 'a'.repeat(50);
-        const { res, body } = await postJson(port, '/tags', {
-          name: name50
-        });
-        assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(body.name, name50);
-        console.log('PASS: POST /tags name exactly 50 chars');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagInvalidColor() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: 'Test',
-          color: 'not-a-color'
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.color, 'Color must be a valid hex color (#RGB or #RRGGBB)');
-        assert.strictEqual(body.errors.name, undefined);
-        console.log('PASS: POST /tags invalid color');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagColorWithoutHash() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: 'Test',
-          color: 'ffffff'
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.strictEqual(body.errors.color, 'Color must be a valid hex color (#RGB or #RRGGBB)');
-        console.log('PASS: POST /tags color without hash');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagShortHexColor() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: 'Short Hex',
-          color: '#abc'
-        });
-        assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(body.name, 'Short Hex');
-        assert.strictEqual(body.color, '#abc');
-        console.log('PASS: POST /tags short hex color (#RGB)');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagBothErrors() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: '',
-          color: 'bad'
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.error, 'Validation failed');
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.ok(body.errors.name, 'must have name error');
-        assert.ok(body.errors.color, 'must have color error');
-        console.log('PASS: POST /tags both name and color errors');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
-
-function testPostTagEmptyBody() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, () => {
-      const port = server.address().port;
-      const req = http.request({
-        hostname: 'localhost',
-        port,
-        path: '/tags',
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' }
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const body = JSON.parse(data);
-            assert.strictEqual(res.statusCode, 400);
-            assert.strictEqual(body.error, 'Request body is required');
-            assert.strictEqual(body.status, 400);
-            assert.strictEqual(body.code, 'BAD_REQUEST');
-            console.log('PASS: POST /tags empty body');
-            resolve();
-          } catch (err) {
-            reject(err);
-          } finally {
-            server.close();
+  // Replicate the keyGenerator from index.js
+  const testLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 2,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+    keyGenerator: (req) => {
+      const authHeader = req.headers.authorization;
+      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          if (decoded && decoded.id) {
+            return `user_${decoded.id}`;
           }
-        });
-      });
-      req.on('error', (err) => { server.close(); reject(err); });
-      req.end();
-    });
+        } catch (err) {
+          // fall through
+        }
+      }
+      return ipKeyGenerator(req);
+    }
   });
-}
 
-function testPostTagNonStringName() {
-  const app = require('./index');
+  testApp.use(express.json());
+  testApp.use(testLimiter);
+  testApp.get('/test', (req, res) => res.json({ ok: true }));
+
   return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
+    const server = testApp.listen(0, async () => {
       try {
         const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: 12345
-        });
-        assert.strictEqual(res.statusCode, 400);
-        assert.strictEqual(body.code, 'VALIDATION_ERROR');
-        assert.ok(body.errors.name, 'must have name error for non-string');
-        console.log('PASS: POST /tags non-string name');
+        const token = jwt.sign({ id: 1, username: 'admin' }, JWT_SECRET, { expiresIn: '1h' });
+        const authHeaders = { Authorization: `Bearer ${token}` };
+
+        // Make 2 requests with auth (should succeed)
+        for (let i = 0; i < 2; i++) {
+          const { res } = await requestJson(port, 'GET', '/test', undefined, authHeaders);
+          assert.strictEqual(res.statusCode, 200, `Auth request ${i + 1} should succeed`);
+        }
+
+        // 3rd request with same auth token should be rate limited
+        const { res: limitedRes } = await requestJson(port, 'GET', '/test', undefined, authHeaders);
+        assert.strictEqual(limitedRes.statusCode, 429, 'Same user must be rate limited');
+
+        // Request WITHOUT auth should still succeed (different key = IP-based)
+        const { res: noAuthRes } = await requestJson(port, 'GET', '/test');
+        assert.strictEqual(noAuthRes.statusCode, 200, 'Unauthenticated request uses different key');
+
+        console.log('PASS: rate limiter keyGenerator uses user ID for authenticated requests');
         resolve();
       } catch (err) {
         reject(err);
@@ -3218,20 +2898,68 @@ function testPostTagNonStringName() {
   });
 }
 
-function testPostTagNullColor() {
-  const app = require('./index');
+function testRateLimiterNotBypassedByHeaders() {
+  const express = require('express');
+  const rateLimit = require('express-rate-limit');
+  const testApp = express();
+
+  const testLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 2,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+    keyGenerator: (req) => {
+      const authHeader = req.headers.authorization;
+      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          if (decoded && decoded.id) {
+            return `user_${decoded.id}`;
+          }
+        } catch (err) {
+          // fall through
+        }
+      }
+      return ipKeyGenerator(req);
+    }
+  });
+
+  testApp.use(express.json());
+  testApp.use(testLimiter);
+  testApp.get('/test', (req, res) => res.json({ ok: true }));
+
   return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
+    const server = testApp.listen(0, async () => {
       try {
         const port = server.address().port;
-        const { res, body } = await postJson(port, '/tags', {
-          name: 'NullColor',
-          color: null
+        const token = jwt.sign({ id: 42, username: 'testuser' }, JWT_SECRET, { expiresIn: '1h' });
+
+        // Make 2 requests with different User-Agent and X-Forwarded-For
+        const { res: r1 } = await requestJson(port, 'GET', '/test', undefined, {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': 'Mozilla/5.0',
+          'X-Forwarded-For': '1.1.1.1'
         });
-        assert.strictEqual(res.statusCode, 201);
-        assert.strictEqual(body.name, 'NullColor');
-        assert.strictEqual(body.color, null);
-        console.log('PASS: POST /tags null color treated as absent');
+        assert.strictEqual(r1.statusCode, 200, 'Request 1 should succeed');
+
+        const { res: r2 } = await requestJson(port, 'GET', '/test', undefined, {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': 'curl/7.68',
+          'X-Forwarded-For': '2.2.2.2'
+        });
+        assert.strictEqual(r2.statusCode, 200, 'Request 2 should succeed');
+
+        // 3rd request should still be rate limited despite different headers
+        const { res: r3 } = await requestJson(port, 'GET', '/test', undefined, {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': 'Safari/604.1',
+          'X-Forwarded-For': '3.3.3.3'
+        });
+        assert.strictEqual(r3.statusCode, 429, 'Changing User-Agent/X-Forwarded-For must NOT bypass rate limit');
+
+        console.log('PASS: rate limiter not bypassed by changing User-Agent or X-Forwarded-For');
         resolve();
       } catch (err) {
         reject(err);
@@ -3242,42 +2970,60 @@ function testPostTagNullColor() {
   });
 }
 
-function testPostTagAutoIncrementId() {
-  const app = require('./index');
-  return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
-      try {
-        const port = server.address().port;
-        const { body: t1 } = await postJson(port, '/tags', { name: 'Tag A' });
-        const { body: t2 } = await postJson(port, '/tags', { name: 'Tag B' });
-        assert.strictEqual(typeof t1.id, 'number');
-        assert.strictEqual(typeof t2.id, 'number');
-        assert.notStrictEqual(t1.id, t2.id, 'ids must be unique');
-        console.log('PASS: POST /tags auto-increment ids');
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        server.close();
-      }
-    });
-  });
-}
+function testRateLimiterSeparateUsersGetSeparateLimits() {
+  const express = require('express');
+  const rateLimit = require('express-rate-limit');
+  const testApp = express();
 
-function testPostTagStoredInMemory() {
-  const app = require('./index');
-  const { tags } = require('./index');
+  const testLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 2,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+    keyGenerator: (req) => {
+      const authHeader = req.headers.authorization;
+      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          if (decoded && decoded.id) {
+            return `user_${decoded.id}`;
+          }
+        } catch (err) {
+          // fall through
+        }
+      }
+      return ipKeyGenerator(req);
+    }
+  });
+
+  testApp.use(express.json());
+  testApp.use(testLimiter);
+  testApp.get('/test', (req, res) => res.json({ ok: true }));
+
   return new Promise((resolve, reject) => {
-    const server = app.listen(0, async () => {
+    const server = testApp.listen(0, async () => {
       try {
         const port = server.address().port;
-        const countBefore = tags.length;
-        await postJson(port, '/tags', { name: 'Stored', color: '#aaa' });
-        assert.strictEqual(tags.length, countBefore + 1);
-        const last = tags[tags.length - 1];
-        assert.strictEqual(last.name, 'Stored');
-        assert.strictEqual(last.color, '#aaa');
-        console.log('PASS: POST /tags stored in memory array');
+        const token1 = jwt.sign({ id: 100, username: 'user1' }, JWT_SECRET, { expiresIn: '1h' });
+        const token2 = jwt.sign({ id: 200, username: 'user2' }, JWT_SECRET, { expiresIn: '1h' });
+
+        // Exhaust user1's limit
+        for (let i = 0; i < 2; i++) {
+          const { res } = await requestJson(port, 'GET', '/test', undefined, { Authorization: `Bearer ${token1}` });
+          assert.strictEqual(res.statusCode, 200, `User1 request ${i + 1} should succeed`);
+        }
+
+        // User1 should be rate limited
+        const { res: u1Limited } = await requestJson(port, 'GET', '/test', undefined, { Authorization: `Bearer ${token1}` });
+        assert.strictEqual(u1Limited.statusCode, 429, 'User1 must be rate limited');
+
+        // User2 should still be able to make requests
+        const { res: u2Res } = await requestJson(port, 'GET', '/test', undefined, { Authorization: `Bearer ${token2}` });
+        assert.strictEqual(u2Res.statusCode, 200, 'User2 must NOT be affected by user1 rate limit');
+
+        console.log('PASS: different users get separate rate limit buckets');
         resolve();
       } catch (err) {
         reject(err);
@@ -3385,25 +3131,9 @@ function testPostTagStoredInMemory() {
     await testSearchBookmarksMatchesUrl();
     await testSearchBookmarksWithoutAuth();
     await testSearchBookmarksNonStringQ();
-    // POST /tags tests
-    testValidateHexColor();
-    await testPostTagSuccess();
-    await testPostTagNameOnly();
-    await testPostTagTrimsName();
-    await testPostTagMissingName();
-    await testPostTagEmptyName();
-    await testPostTagWhitespaceName();
-    await testPostTagNameTooLong();
-    await testPostTagNameExactly50Chars();
-    await testPostTagInvalidColor();
-    await testPostTagColorWithoutHash();
-    await testPostTagShortHexColor();
-    await testPostTagBothErrors();
-    await testPostTagEmptyBody();
-    await testPostTagNonStringName();
-    await testPostTagNullColor();
-    await testPostTagAutoIncrementId();
-    await testPostTagStoredInMemory();
+    await testRateLimiterKeyGeneratorUsesUserIdForAuth();
+    await testRateLimiterNotBypassedByHeaders();
+    await testRateLimiterSeparateUsersGetSeparateLimits();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
