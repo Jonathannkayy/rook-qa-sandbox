@@ -2832,6 +2832,462 @@ function testDeleteBookmarkWithoutAuth() {
   });
 }
 
+// --- POST /tags tests ---
+
+function testValidateHexColor() {
+  const { validateHexColor } = require('./index');
+  // Valid 3-digit hex
+  assert.strictEqual(validateHexColor('#fff'), true);
+  assert.strictEqual(validateHexColor('#FFF'), true);
+  assert.strictEqual(validateHexColor('#abc'), true);
+  assert.strictEqual(validateHexColor('#123'), true);
+  // Valid 6-digit hex
+  assert.strictEqual(validateHexColor('#ffffff'), true);
+  assert.strictEqual(validateHexColor('#FFFFFF'), true);
+  assert.strictEqual(validateHexColor('#aabbcc'), true);
+  assert.strictEqual(validateHexColor('#112233'), true);
+  assert.strictEqual(validateHexColor('#AbCdEf'), true);
+  // Invalid
+  assert.strictEqual(validateHexColor('fff'), false);
+  assert.strictEqual(validateHexColor('#ff'), false);
+  assert.strictEqual(validateHexColor('#ffff'), false);
+  assert.strictEqual(validateHexColor('#fffff'), false);
+  assert.strictEqual(validateHexColor('#fffffff'), false);
+  assert.strictEqual(validateHexColor('#gggggg'), false);
+  assert.strictEqual(validateHexColor('#xyz'), false);
+  assert.strictEqual(validateHexColor(''), false);
+  assert.strictEqual(validateHexColor(null), false);
+  assert.strictEqual(validateHexColor(undefined), false);
+  assert.strictEqual(validateHexColor(123), false);
+  assert.strictEqual(validateHexColor('red'), false);
+  assert.strictEqual(validateHexColor('rgb(0,0,0)'), false);
+  console.log('PASS: validateHexColor');
+}
+
+function testPostTagSuccess() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: 'JavaScript',
+          color: '#f0db4f'
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(typeof body.id, 'number');
+        assert.strictEqual(body.name, 'JavaScript');
+        assert.strictEqual(body.color, '#f0db4f');
+        assert.strictEqual(typeof body.created_at, 'string');
+        assert.ok(!isNaN(Date.parse(body.created_at)), 'created_at must be valid ISO date');
+        console.log('PASS: POST /tags success');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagNameOnly() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: 'Backend'
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.name, 'Backend');
+        assert.strictEqual(body.color, null);
+        assert.strictEqual(typeof body.id, 'number');
+        console.log('PASS: POST /tags name only (color optional)');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagTrimsName() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: '  React  ',
+          color: '#61dafb'
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.name, 'React');
+        console.log('PASS: POST /tags trims name');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagMissingName() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          color: '#fff'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.strictEqual(body.errors.name, 'Name is required and must be a non-empty string');
+        console.log('PASS: POST /tags missing name');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagEmptyName() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: ''
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.strictEqual(body.errors.name, 'Name is required and must be a non-empty string');
+        console.log('PASS: POST /tags empty name');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagWhitespaceName() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: '   '
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.strictEqual(body.errors.name, 'Name is required and must be a non-empty string');
+        console.log('PASS: POST /tags whitespace-only name');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagNameTooLong() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const longName = 'a'.repeat(51);
+        const { res, body } = await postJson(port, '/tags', {
+          name: longName
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.strictEqual(body.errors.name, 'Name must be at most 50 characters');
+        console.log('PASS: POST /tags name too long');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagNameExactly50Chars() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const name50 = 'a'.repeat(50);
+        const { res, body } = await postJson(port, '/tags', {
+          name: name50
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.name, name50);
+        console.log('PASS: POST /tags name exactly 50 chars');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagInvalidColor() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: 'Test',
+          color: 'not-a-color'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.strictEqual(body.errors.color, 'Color must be a valid hex color (#RGB or #RRGGBB)');
+        assert.strictEqual(body.errors.name, undefined);
+        console.log('PASS: POST /tags invalid color');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagColorWithoutHash() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: 'Test',
+          color: 'ffffff'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.strictEqual(body.errors.color, 'Color must be a valid hex color (#RGB or #RRGGBB)');
+        console.log('PASS: POST /tags color without hash');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagShortHexColor() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: 'Short Hex',
+          color: '#abc'
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.name, 'Short Hex');
+        assert.strictEqual(body.color, '#abc');
+        console.log('PASS: POST /tags short hex color (#RGB)');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagBothErrors() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: '',
+          color: 'bad'
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.error, 'Validation failed');
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.ok(body.errors.name, 'must have name error');
+        assert.ok(body.errors.color, 'must have color error');
+        console.log('PASS: POST /tags both name and color errors');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagEmptyBody() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const port = server.address().port;
+      const req = http.request({
+        hostname: 'localhost',
+        port,
+        path: '/tags',
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const body = JSON.parse(data);
+            assert.strictEqual(res.statusCode, 400);
+            assert.strictEqual(body.error, 'Request body is required');
+            assert.strictEqual(body.status, 400);
+            assert.strictEqual(body.code, 'BAD_REQUEST');
+            console.log('PASS: POST /tags empty body');
+            resolve();
+          } catch (err) {
+            reject(err);
+          } finally {
+            server.close();
+          }
+        });
+      });
+      req.on('error', (err) => { server.close(); reject(err); });
+      req.end();
+    });
+  });
+}
+
+function testPostTagNonStringName() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: 12345
+        });
+        assert.strictEqual(res.statusCode, 400);
+        assert.strictEqual(body.code, 'VALIDATION_ERROR');
+        assert.ok(body.errors.name, 'must have name error for non-string');
+        console.log('PASS: POST /tags non-string name');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagNullColor() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { res, body } = await postJson(port, '/tags', {
+          name: 'NullColor',
+          color: null
+        });
+        assert.strictEqual(res.statusCode, 201);
+        assert.strictEqual(body.name, 'NullColor');
+        assert.strictEqual(body.color, null);
+        console.log('PASS: POST /tags null color treated as absent');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagAutoIncrementId() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: t1 } = await postJson(port, '/tags', { name: 'Tag A' });
+        const { body: t2 } = await postJson(port, '/tags', { name: 'Tag B' });
+        assert.strictEqual(typeof t1.id, 'number');
+        assert.strictEqual(typeof t2.id, 'number');
+        assert.notStrictEqual(t1.id, t2.id, 'ids must be unique');
+        console.log('PASS: POST /tags auto-increment ids');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+function testPostTagStoredInMemory() {
+  const app = require('./index');
+  const { tags } = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const countBefore = tags.length;
+        await postJson(port, '/tags', { name: 'Stored', color: '#aaa' });
+        assert.strictEqual(tags.length, countBefore + 1);
+        const last = tags[tags.length - 1];
+        assert.strictEqual(last.name, 'Stored');
+        assert.strictEqual(last.color, '#aaa');
+        console.log('PASS: POST /tags stored in memory array');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -2929,6 +3385,25 @@ function testDeleteBookmarkWithoutAuth() {
     await testSearchBookmarksMatchesUrl();
     await testSearchBookmarksWithoutAuth();
     await testSearchBookmarksNonStringQ();
+    // POST /tags tests
+    testValidateHexColor();
+    await testPostTagSuccess();
+    await testPostTagNameOnly();
+    await testPostTagTrimsName();
+    await testPostTagMissingName();
+    await testPostTagEmptyName();
+    await testPostTagWhitespaceName();
+    await testPostTagNameTooLong();
+    await testPostTagNameExactly50Chars();
+    await testPostTagInvalidColor();
+    await testPostTagColorWithoutHash();
+    await testPostTagShortHexColor();
+    await testPostTagBothErrors();
+    await testPostTagEmptyBody();
+    await testPostTagNonStringName();
+    await testPostTagNullColor();
+    await testPostTagAutoIncrementId();
+    await testPostTagStoredInMemory();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);

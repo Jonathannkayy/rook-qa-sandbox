@@ -14,6 +14,8 @@ let requestCount = 0;
 let totalResponseTime = 0;
 const bookmarks = [];
 let nextBookmarkId = 1;
+const tags = [];
+let nextTagId = 1;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const JWT_EXPIRY = '1h';
 
@@ -158,6 +160,11 @@ function validateEmail(email) {
 
 function validateName(name) {
   return typeof name === 'string' && name.trim().length >= 2;
+}
+
+function validateHexColor(color) {
+  if (typeof color !== 'string') return false;
+  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(color);
 }
 
 function formatUptime(ms) {
@@ -497,6 +504,40 @@ app.delete('/cache', asyncHandler((req, res) => {
   res.json({ cleared: true });
 }));
 
+app.post('/tags', asyncHandler((req, res) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json(createErrorResponse(400, 'Request body is required', 'BAD_REQUEST'));
+  }
+
+  const { name, color } = req.body;
+  const errors = {};
+
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    errors.name = 'Name is required and must be a non-empty string';
+  } else if (name.trim().length > 50) {
+    errors.name = 'Name must be at most 50 characters';
+  }
+
+  if (color !== undefined && color !== null) {
+    if (!validateHexColor(color)) {
+      errors.color = 'Color must be a valid hex color (#RGB or #RRGGBB)';
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json(createErrorResponse(400, 'Validation failed', 'VALIDATION_ERROR', { errors }));
+  }
+
+  const tag = {
+    id: nextTagId++,
+    name: name.trim(),
+    color: color || null,
+    created_at: new Date().toISOString()
+  };
+  tags.push(tag);
+  res.status(201).json(tag);
+}));
+
 // 404 handler - must be after all routes
 app.use((req, res, next) => {
   res.status(404).json(createErrorResponse(404, 'Not Found', 'NOT_FOUND', { path: req.path }));
@@ -544,3 +585,5 @@ module.exports.correlationId = correlationId;
 module.exports.authenticateToken = authenticateToken;
 module.exports.users = users;
 module.exports.JWT_SECRET = JWT_SECRET;
+module.exports.validateHexColor = validateHexColor;
+module.exports.tags = tags;
