@@ -2,6 +2,7 @@
 // Main app - intentionally has a bug on line 15
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const app = express();
@@ -125,7 +126,22 @@ const rateLimiter = rateLimit({
   limit: 100,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' }
+  message: { error: 'Too many requests, please try again later' },
+  keyGenerator: (req) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded && decoded.id) {
+          return `user_${decoded.id}`;
+        }
+      } catch (err) {
+        // Token invalid/expired - fall through to IP-based key
+      }
+    }
+    return ipKeyGenerator(req);
+  }
 });
 if (process.env.NODE_ENV !== 'test') {
   app.use(rateLimiter);
