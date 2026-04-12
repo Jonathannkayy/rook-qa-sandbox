@@ -2437,7 +2437,7 @@ function testPatchBookmarkUnknownFields() {
         const { body: loginBody } = await login(port, 'admin', 'password123');
         const headers = { Authorization: `Bearer ${loginBody.token}` };
         const { body: created } = await requestJson(port, 'POST', '/bookmarks', {
-          url: 'https://example.com',
+          url: 'https://patch-unknown-fields.example.com',
           title: 'Test'
         }, headers);
         const { res, body } = await requestJson(port, 'PATCH', `/bookmarks/${created.id}`, {
@@ -2700,7 +2700,7 @@ function testSearchBookmarksCaseInsensitive() {
         const { body: loginBody } = await login(port, 'admin', 'password123');
         const headers = { Authorization: `Bearer ${loginBody.token}` };
         // Create a bookmark with mixed case
-        await requestJson(port, 'POST', '/bookmarks', { url: 'https://example.com', title: 'MySpecialBookmark' }, headers);
+        await requestJson(port, 'POST', '/bookmarks', { url: 'https://case-insensitive.example.com', title: 'MySpecialBookmark' }, headers);
         // Search with different casing
         const { res: res1, body: body1 } = await requestJson(port, 'GET', '/bookmarks/search?q=MYSPECIAL', undefined, headers);
         assert.strictEqual(res1.statusCode, 200);
@@ -3007,6 +3007,43 @@ function testEmptyStringJsonReturns400() {
   });
 }
 
+function testPostBookmarkDuplicateUrl() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      try {
+        const port = server.address().port;
+        const { body: loginBody } = await login(port, 'admin', 'password123');
+        const headers = { Authorization: `Bearer ${loginBody.token}` };
+        // Create first bookmark
+        const { res: firstRes, body: firstBody } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://duplicate-test.com',
+          title: 'First Bookmark'
+        }, headers);
+        assert.strictEqual(firstRes.statusCode, 201);
+        // Attempt to create duplicate
+        const { res: dupRes, body: dupBody } = await requestJson(port, 'POST', '/bookmarks', {
+          url: 'https://duplicate-test.com',
+          title: 'Different Title Same URL'
+        }, headers);
+        assert.strictEqual(dupRes.statusCode, 409);
+        assert.strictEqual(dupBody.error, 'Bookmark with this URL already exists');
+        assert.strictEqual(dupBody.status, 409);
+        assert.strictEqual(dupBody.code, 'DUPLICATE');
+        assert.ok(dupBody.existing, 'response must include existing bookmark');
+        assert.strictEqual(dupBody.existing.id, firstBody.id);
+        assert.strictEqual(dupBody.existing.url, 'https://duplicate-test.com');
+        console.log('PASS: POST /bookmarks duplicate URL returns 409');
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
 (async () => {
   try {
     testParseUserInput();
@@ -3109,6 +3146,7 @@ function testEmptyStringJsonReturns400() {
     await testMalformedJsonReturns400();
     await testMalformedJsonOnLoginReturns400();
     await testEmptyStringJsonReturns400();
+    await testPostBookmarkDuplicateUrl();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);

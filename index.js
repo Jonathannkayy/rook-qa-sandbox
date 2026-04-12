@@ -349,6 +349,12 @@ app.post('/bookmarks', authenticateToken, asyncHandler((req, res) => {
     return res.status(400).json(createErrorResponse(400, 'Validation failed', 'VALIDATION_ERROR', { errors }));
   }
 
+  // Check for duplicate URL
+  const existingBookmark = bookmarks.find(b => b.url === url.trim());
+  if (existingBookmark) {
+    return res.status(409).json(createErrorResponse(409, 'Bookmark with this URL already exists', 'DUPLICATE', { existing: existingBookmark }));
+  }
+
   const bookmark = {
     id: nextBookmarkId++,
     url: url.trim(),
