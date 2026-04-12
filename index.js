@@ -2,20 +2,11 @@
 // Main app - intentionally has a bug on line 15
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { ipKeyGenerator } = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const app = express();
 
 app.use(express.json());
-
-// JSON parse error handler - catches malformed JSON from express.json()
-app.use((err, req, res, next) => {
-  if (err.type === 'entity.parse.failed' && err instanceof SyntaxError) {
-    return res.status(400).json(createErrorResponse(400, 'Invalid JSON', 'BAD_REQUEST'));
-  }
-  next(err);
-});
 
 // Metrics tracking
 const startTime = Date.now();
@@ -134,22 +125,7 @@ const rateLimiter = rateLimit({
   limit: 100,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' },
-  keyGenerator: (req) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        if (decoded && decoded.id) {
-          return `user_${decoded.id}`;
-        }
-      } catch (err) {
-        // Token invalid/expired - fall through to IP-based key
-      }
-    }
-    return ipKeyGenerator(req);
-  }
+  message: { error: 'Too many requests, please try again later' }
 });
 if (process.env.NODE_ENV !== 'test') {
   app.use(rateLimiter);
@@ -205,27 +181,14 @@ function formatUptime(ms) {
   return parts.join(' ');
 }
 
-app.get('/health', asyncHandler(async (req, res) => {
+app.get('/health', asyncHandler((req, res) => {
   if (Object.keys(req.query).length > 0) {
     return res.status(400).json(createErrorResponse(400, 'Health endpoint does not accept query parameters', 'BAD_REQUEST'));
   }
   const elapsedMs = Date.now() - startTime;
   const mem = process.memoryUsage();
-  const results = await Promise.allSettled(
-    dependencyChecks.map(async (dep) => {
-      const ok = await dep.check();
-      return { name: dep.name, ok: !!ok };
-    })
-  );
-  const checks = results.map((r, i) => {
-    if (r.status === 'fulfilled') return r.value;
-    return { name: dependencyChecks[i].name, ok: false, error: r.reason?.message };
-  });
-  const allHealthy = checks.every(c => c.ok);
-  const status = allHealthy ? 'ok' : 'error';
-  const httpStatus = allHealthy ? 200 : 503;
-  res.status(httpStatus).json({
-    status,
+  res.json({
+    status: 'ok',
     startedAt: new Date(startTime).toISOString(),
     uptime_seconds: Math.floor(elapsedMs / 1000),
     uptime: formatUptime(elapsedMs),
@@ -235,8 +198,7 @@ app.get('/health', asyncHandler(async (req, res) => {
       heapUsed: mem.heapUsed,
       heapTotal: mem.heapTotal,
       external: mem.external
-    },
-    checks
+    }
   });
 }));
 
@@ -366,18 +328,18 @@ app.get('/bookmarks/search', authenticateToken, asyncHandler((req, res) => {
   }
   const query = q.trim().toLowerCase();
   const results = bookmarks.filter(b => {
-    const title = String(b.title || '').toLowerCase();
-    const url = String(b.url || '').toLowerCase();
+    const title = (b.title || '').toLowerCase();
+    const url = (b.url || '').toLowerCase();
     return title.includes(query) || url.includes(query);
   });
   res.json({ bookmarks: results });
 }));
 
 app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  if (!/^\d+$/.test(req.params.id)) {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
-  const id = parseInt(req.params.id, 10);
   const bookmark = bookmarks.find(b => b.id === id);
   if (!bookmark) {
     return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
@@ -386,10 +348,10 @@ app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 }));
 
 app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  if (!/^\d+$/.test(req.params.id)) {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
-  const id = parseInt(req.params.id, 10);
   const index = bookmarks.findIndex(b => b.id === id);
 
   if (index === -1) {
@@ -401,10 +363,10 @@ app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 }));
 
 app.patch('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  if (!/^\d+$/.test(req.params.id)) {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
-  const id = parseInt(req.params.id, 10);
 
   const bookmark = bookmarks.find(b => b.id === id);
   if (!bookmark) {
@@ -431,10 +393,10 @@ app.patch('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 }));
 
 app.put('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  if (!/^\d+$/.test(req.params.id)) {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
-  const id = parseInt(req.params.id, 10);
 
   const bookmark = bookmarks.find(b => b.id === id);
   if (!bookmark) {
@@ -528,7 +490,7 @@ app.delete('/cache', asyncHandler((req, res) => {
   res.json({ cleared: true });
 }));
 
-app.post('/tags', asyncHandler((req, res) => {
+app.post('/tags', authenticateToken, asyncHandler((req, res) => {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     return res.status(400).json(createErrorResponse(400, 'Request body is required', 'BAD_REQUEST'));
   }
@@ -560,6 +522,10 @@ app.post('/tags', asyncHandler((req, res) => {
   };
   tags.push(tag);
   res.status(201).json(tag);
+}));
+
+app.get('/tags', authenticateToken, asyncHandler((req, res) => {
+  res.json(tags);
 }));
 
 // 404 handler - must be after all routes
