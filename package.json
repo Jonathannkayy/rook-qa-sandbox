@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Scratch repo for testing Rook capabilities safely",
   "scripts": {
-    "test": "node test.js",
+    "test": "NODE_ENV=test node test.js",
     "build": "echo 'Build OK'"
   },
   "dependencies": {

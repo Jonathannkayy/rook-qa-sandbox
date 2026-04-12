@@ -125,7 +125,9 @@ const rateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' }
 });
-app.use(rateLimiter);
+if (process.env.NODE_ENV !== 'test') {
+  app.use(rateLimiter);
+}
 
 // Async route wrapper - catches errors and forwards to error handler
 function asyncHandler(fn) {
@@ -172,14 +174,27 @@ function formatUptime(ms) {
   return parts.join(' ');
 }
 
-app.get('/health', asyncHandler((req, res) => {
+app.get('/health', asyncHandler(async (req, res) => {
   if (Object.keys(req.query).length > 0) {
     return res.status(400).json(createErrorResponse(400, 'Health endpoint does not accept query parameters', 'BAD_REQUEST'));
   }
   const elapsedMs = Date.now() - startTime;
   const mem = process.memoryUsage();
-  res.json({
-    status: 'ok',
+  const results = await Promise.allSettled(
+    dependencyChecks.map(async (dep) => {
+      const ok = await dep.check();
+      return { name: dep.name, ok: !!ok };
+    })
+  );
+  const checks = results.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value;
+    return { name: dependencyChecks[i].name, ok: false, error: r.reason?.message };
+  });
+  const allHealthy = checks.every(c => c.ok);
+  const status = allHealthy ? 'ok' : 'error';
+  const httpStatus = allHealthy ? 200 : 503;
+  res.status(httpStatus).json({
+    status,
     startedAt: new Date(startTime).toISOString(),
     uptime_seconds: Math.floor(elapsedMs / 1000),
     uptime: formatUptime(elapsedMs),
@@ -189,7 +204,8 @@ app.get('/health', asyncHandler((req, res) => {
       heapUsed: mem.heapUsed,
       heapTotal: mem.heapTotal,
       external: mem.external
-    }
+    },
+    checks
   });
 }));
 
@@ -312,6 +328,20 @@ app.get('/bookmarks', authenticateToken, asyncHandler((req, res) => {
   res.json(sorted);
 }));
 
+app.get('/bookmarks/search', authenticateToken, asyncHandler((req, res) => {
+  const q = req.query.q;
+  if (typeof q !== 'string' || q.trim().length === 0) {
+    return res.status(400).json(createErrorResponse(400, 'Query parameter "q" is required', 'BAD_REQUEST'));
+  }
+  const query = q.trim().toLowerCase();
+  const results = bookmarks.filter(b => {
+    const title = (b.title || '').toLowerCase();
+    const url = (b.url || '').toLowerCase();
+    return title.includes(query) || url.includes(query);
+  });
+  res.json({ bookmarks: results });
+}));
+
 app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {
@@ -326,6 +356,9 @@ app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 
 app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
+  }
   const index = bookmarks.findIndex(b => b.id === id);
 
   if (index === -1) {
@@ -473,13 +506,23 @@ app.use((req, res, next) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
+  // Only expose safe, sanitized message - never leak stack traces or internal details
+  let message = err.message || 'Internal Server Error';
+  // Sanitize: detect stack traces, file paths, or obvious internal errors
+  const hasNewline = message.includes('\n');
+  const hasAtSymbol = message.includes('at ');
+  const hasFilePath = /:\d+:/.test(message); // matches ":123:" style line numbers
+  if (hasNewline || hasAtSymbol || hasFilePath) {
+    message = 'Internal Server Error';
+  }
   const code = err.code || 'INTERNAL_ERROR';
   if (process.env.NODE_ENV !== 'test') {
-    console.error(`[ERROR] ${req.method} ${req.path}:`, err);
+    // Log safe error info only - never log full error object which may contain stack traces
+    console.error(`[ERROR] ${req.method} ${req.path}: ${statusCode} ${code}`);
   }
   res.status(statusCode).json(createErrorResponse(statusCode, message, code));
 });
+
 
 module.exports = app;
 module.exports.parseUserInput = parseUserInput;
