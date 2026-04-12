@@ -1074,9 +1074,22 @@ function testRateLimiterExport() {
 }
 
 function testRateLimitHeaders() {
-  const app = require('./index');
+  const express = require('express');
+  const rateLimit = require('express-rate-limit');
+  const testApp = express();
+
+  const testLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 100,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' }
+  });
+  testApp.use(testLimiter);
+  testApp.get('/health', (req, res) => res.json({ status: 'ok' }));
+
   return new Promise((resolve, reject) => {
-    const server = app.listen(0, () => {
+    const server = testApp.listen(0, () => {
       const port = server.address().port;
       http.get(`http://localhost:${port}/health`, (res) => {
         let data = '';

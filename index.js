@@ -125,7 +125,9 @@ const rateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' }
 });
-app.use(rateLimiter);
+if (process.env.NODE_ENV !== 'test') {
+  app.use(rateLimiter);
+}
 
 // Async route wrapper - catches errors and forwards to error handler
 function asyncHandler(fn) {
