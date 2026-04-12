@@ -9,6 +9,14 @@ const app = express();
 
 app.use(express.json());
 
+// JSON parse error handler - catches malformed JSON from express.json()
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed' && err instanceof SyntaxError) {
+    return res.status(400).json(createErrorResponse(400, 'Invalid JSON', 'BAD_REQUEST'));
+  }
+  next(err);
+});
+
 // Metrics tracking
 const startTime = Date.now();
 let requestCount = 0;

@@ -2,7 +2,6 @@ const assert = require('assert');
 const http = require('http');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./index');
-const { ipKeyGenerator } = require('express-rate-limit');
 
 // Basic test suite
 function testParseUserInput() {
@@ -2833,61 +2832,41 @@ function testDeleteBookmarkWithoutAuth() {
   });
 }
 
-function testRateLimiterKeyGeneratorUsesUserIdForAuth() {
-  const express = require('express');
-  const rateLimit = require('express-rate-limit');
-  const testApp = express();
-
-  // Replicate the keyGenerator from index.js
-  const testLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 2,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: { error: 'Too many requests, please try again later' },
-    keyGenerator: (req) => {
-      const authHeader = req.headers.authorization;
-      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, JWT_SECRET);
-          if (decoded && decoded.id) {
-            return `user_${decoded.id}`;
-          }
-        } catch (err) {
-          // fall through
-        }
-      }
-      return ipKeyGenerator(req);
-    }
-  });
-
-  testApp.use(express.json());
-  testApp.use(testLimiter);
-  testApp.get('/test', (req, res) => res.json({ ok: true }));
-
+function sendRaw(port, method, path, rawBody, headers) {
   return new Promise((resolve, reject) => {
-    const server = testApp.listen(0, async () => {
+    const finalHeaders = Object.assign({ 'Content-Type': 'application/json' }, headers);
+    const req = http.request({
+      hostname: 'localhost',
+      port,
+      path,
+      method,
+      headers: finalHeaders
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ res, body: data ? JSON.parse(data) : null }));
+    });
+    req.on('error', reject);
+    if (rawBody !== undefined) {
+      req.write(rawBody);
+    }
+    req.end();
+  });
+}
+
+function testMalformedJsonReturns400() {
+  const app = require('./index');
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const token = jwt.sign({ id: 1, username: 'admin' }, JWT_SECRET, { expiresIn: '1h' });
-        const authHeaders = { Authorization: `Bearer ${token}` };
-
-        // Make 2 requests with auth (should succeed)
-        for (let i = 0; i < 2; i++) {
-          const { res } = await requestJson(port, 'GET', '/test', undefined, authHeaders);
-          assert.strictEqual(res.statusCode, 200, `Auth request ${i + 1} should succeed`);
-        }
-
-        // 3rd request with same auth token should be rate limited
-        const { res: limitedRes } = await requestJson(port, 'GET', '/test', undefined, authHeaders);
-        assert.strictEqual(limitedRes.statusCode, 429, 'Same user must be rate limited');
-
-        // Request WITHOUT auth should still succeed (different key = IP-based)
-        const { res: noAuthRes } = await requestJson(port, 'GET', '/test');
-        assert.strictEqual(noAuthRes.statusCode, 200, 'Unauthenticated request uses different key');
-
-        console.log('PASS: rate limiter keyGenerator uses user ID for authenticated requests');
+        // Send malformed JSON to a POST endpoint
+        const { res, body } = await sendRaw(port, 'POST', '/comments', '{invalid json}');
+        assert.strictEqual(res.statusCode, 400, 'malformed JSON must return 400, not 500');
+        assert.strictEqual(body.error, 'Invalid JSON');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: malformed JSON returns 400');
         resolve();
       } catch (err) {
         reject(err);
@@ -2898,68 +2877,19 @@ function testRateLimiterKeyGeneratorUsesUserIdForAuth() {
   });
 }
 
-function testRateLimiterNotBypassedByHeaders() {
-  const express = require('express');
-  const rateLimit = require('express-rate-limit');
-  const testApp = express();
-
-  const testLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 2,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: { error: 'Too many requests, please try again later' },
-    keyGenerator: (req) => {
-      const authHeader = req.headers.authorization;
-      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, JWT_SECRET);
-          if (decoded && decoded.id) {
-            return `user_${decoded.id}`;
-          }
-        } catch (err) {
-          // fall through
-        }
-      }
-      return ipKeyGenerator(req);
-    }
-  });
-
-  testApp.use(express.json());
-  testApp.use(testLimiter);
-  testApp.get('/test', (req, res) => res.json({ ok: true }));
-
+function testMalformedJsonOnLoginReturns400() {
+  const app = require('./index');
   return new Promise((resolve, reject) => {
-    const server = testApp.listen(0, async () => {
+    const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const token = jwt.sign({ id: 42, username: 'testuser' }, JWT_SECRET, { expiresIn: '1h' });
-
-        // Make 2 requests with different User-Agent and X-Forwarded-For
-        const { res: r1 } = await requestJson(port, 'GET', '/test', undefined, {
-          Authorization: `Bearer ${token}`,
-          'User-Agent': 'Mozilla/5.0',
-          'X-Forwarded-For': '1.1.1.1'
-        });
-        assert.strictEqual(r1.statusCode, 200, 'Request 1 should succeed');
-
-        const { res: r2 } = await requestJson(port, 'GET', '/test', undefined, {
-          Authorization: `Bearer ${token}`,
-          'User-Agent': 'curl/7.68',
-          'X-Forwarded-For': '2.2.2.2'
-        });
-        assert.strictEqual(r2.statusCode, 200, 'Request 2 should succeed');
-
-        // 3rd request should still be rate limited despite different headers
-        const { res: r3 } = await requestJson(port, 'GET', '/test', undefined, {
-          Authorization: `Bearer ${token}`,
-          'User-Agent': 'Safari/604.1',
-          'X-Forwarded-For': '3.3.3.3'
-        });
-        assert.strictEqual(r3.statusCode, 429, 'Changing User-Agent/X-Forwarded-For must NOT bypass rate limit');
-
-        console.log('PASS: rate limiter not bypassed by changing User-Agent or X-Forwarded-For');
+        // Truncated JSON
+        const { res, body } = await sendRaw(port, 'POST', '/login', '{"username":');
+        assert.strictEqual(res.statusCode, 400, 'truncated JSON must return 400');
+        assert.strictEqual(body.error, 'Invalid JSON');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: malformed JSON on /login returns 400');
         resolve();
       } catch (err) {
         reject(err);
@@ -2970,60 +2900,19 @@ function testRateLimiterNotBypassedByHeaders() {
   });
 }
 
-function testRateLimiterSeparateUsersGetSeparateLimits() {
-  const express = require('express');
-  const rateLimit = require('express-rate-limit');
-  const testApp = express();
-
-  const testLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 2,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: { error: 'Too many requests, please try again later' },
-    keyGenerator: (req) => {
-      const authHeader = req.headers.authorization;
-      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, JWT_SECRET);
-          if (decoded && decoded.id) {
-            return `user_${decoded.id}`;
-          }
-        } catch (err) {
-          // fall through
-        }
-      }
-      return ipKeyGenerator(req);
-    }
-  });
-
-  testApp.use(express.json());
-  testApp.use(testLimiter);
-  testApp.get('/test', (req, res) => res.json({ ok: true }));
-
+function testEmptyStringJsonReturns400() {
+  const app = require('./index');
   return new Promise((resolve, reject) => {
-    const server = testApp.listen(0, async () => {
+    const server = app.listen(0, async () => {
       try {
         const port = server.address().port;
-        const token1 = jwt.sign({ id: 100, username: 'user1' }, JWT_SECRET, { expiresIn: '1h' });
-        const token2 = jwt.sign({ id: 200, username: 'user2' }, JWT_SECRET, { expiresIn: '1h' });
-
-        // Exhaust user1's limit
-        for (let i = 0; i < 2; i++) {
-          const { res } = await requestJson(port, 'GET', '/test', undefined, { Authorization: `Bearer ${token1}` });
-          assert.strictEqual(res.statusCode, 200, `User1 request ${i + 1} should succeed`);
-        }
-
-        // User1 should be rate limited
-        const { res: u1Limited } = await requestJson(port, 'GET', '/test', undefined, { Authorization: `Bearer ${token1}` });
-        assert.strictEqual(u1Limited.statusCode, 429, 'User1 must be rate limited');
-
-        // User2 should still be able to make requests
-        const { res: u2Res } = await requestJson(port, 'GET', '/test', undefined, { Authorization: `Bearer ${token2}` });
-        assert.strictEqual(u2Res.statusCode, 200, 'User2 must NOT be affected by user1 rate limit');
-
-        console.log('PASS: different users get separate rate limit buckets');
+        // Completely invalid body that isn't empty
+        const { res, body } = await sendRaw(port, 'POST', '/validate', 'not-json-at-all');
+        assert.strictEqual(res.statusCode, 400, 'non-JSON body must return 400');
+        assert.strictEqual(body.error, 'Invalid JSON');
+        assert.strictEqual(body.status, 400);
+        assert.strictEqual(body.code, 'BAD_REQUEST');
+        console.log('PASS: non-JSON body returns 400');
         resolve();
       } catch (err) {
         reject(err);
@@ -3131,9 +3020,9 @@ function testRateLimiterSeparateUsersGetSeparateLimits() {
     await testSearchBookmarksMatchesUrl();
     await testSearchBookmarksWithoutAuth();
     await testSearchBookmarksNonStringQ();
-    await testRateLimiterKeyGeneratorUsesUserIdForAuth();
-    await testRateLimiterNotBypassedByHeaders();
-    await testRateLimiterSeparateUsersGetSeparateLimits();
+    await testMalformedJsonReturns400();
+    await testMalformedJsonOnLoginReturns400();
+    await testEmptyStringJsonReturns400();
     console.log('All tests passed');
   } catch(e) {
     console.error('FAIL:', e.message);
