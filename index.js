@@ -223,8 +223,9 @@ app.get('/health', asyncHandler(async (req, res) => {
   });
   const allHealthy = checks.every(c => c.ok);
   const status = allHealthy ? 'ok' : 'error';
-  const httpStatus = allHealthy ? 200 : 503;
-  res.status(httpStatus).json({
+  // Health is a liveness probe - always returns 200 unless the app itself is dead
+  // Use /ready for readiness probe that returns 503 when dependencies fail
+  res.status(200).json({
     status,
     startedAt: new Date(startTime).toISOString(),
     uptime_seconds: Math.floor(elapsedMs / 1000),
@@ -615,3 +616,4 @@ module.exports.users = users;
 module.exports.JWT_SECRET = JWT_SECRET;
 module.exports.validateHexColor = validateHexColor;
 module.exports.tags = tags;
+// Rate limit configuration - configurable window
