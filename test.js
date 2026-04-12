@@ -1075,17 +1075,10 @@ function testRateLimiterExport() {
 
 function testRateLimitHeaders() {
   const express = require('express');
-  const rateLimit = require('express-rate-limit');
+  const { rateLimiter } = require('./index');
   const testApp = express();
 
-  const testLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 100,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: { error: 'Too many requests, please try again later' }
-  });
-  testApp.use(testLimiter);
+  testApp.use(rateLimiter);
   testApp.get('/health', (req, res) => res.json({ status: 'ok' }));
 
   return new Promise((resolve, reject) => {
