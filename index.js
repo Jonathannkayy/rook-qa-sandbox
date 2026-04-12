@@ -455,7 +455,7 @@ app.get('/ready', asyncHandler(async (req, res) => {
   );
   const checks = results.map((r, i) => {
     if (r.status === 'fulfilled') return r.value;
-    return { name: dependencyChecks[i].name, ready: false, error: r.reason?.message };
+    return { name: dependencyChecks[i].name, ready: false, error: 'dependency check failed' };
   });
   const allReady = checks.every(c => c.ready);
   res.status(allReady ? 200 : 503).json({ ready: allReady, checks });
