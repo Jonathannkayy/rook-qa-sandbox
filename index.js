@@ -447,6 +447,12 @@ app.put('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
   }
 
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+
+  // Reject if body contains id field - ID comes from URL only
+  if ('id' in body) {
+    return res.status(400).json(createErrorResponse(400, 'ID cannot be changed in request body', 'BAD_REQUEST'));
+  }
+
   const missingFields = [];
   if (body.url === undefined || body.url === null || (typeof body.url === 'string' && body.url.trim().length === 0)) {
     missingFields.push('url');
