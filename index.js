@@ -9,6 +9,14 @@ const app = express();
 
 app.use(express.json());
 
+// JSON parse error handler - catches malformed JSON from express.json()
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed' && err instanceof SyntaxError) {
+    return res.status(400).json(createErrorResponse(400, 'Invalid JSON', 'BAD_REQUEST'));
+  }
+  next(err);
+});
+
 // Metrics tracking
 const startTime = Date.now();
 let requestCount = 0;
@@ -358,18 +366,18 @@ app.get('/bookmarks/search', authenticateToken, asyncHandler((req, res) => {
   }
   const query = q.trim().toLowerCase();
   const results = bookmarks.filter(b => {
-    const title = (b.title || '').toLowerCase();
-    const url = (b.url || '').toLowerCase();
+    const title = String(b.title || '').toLowerCase();
+    const url = String(b.url || '').toLowerCase();
     return title.includes(query) || url.includes(query);
   });
   res.json({ bookmarks: results });
 }));
 
 app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
+  if (!/^\d+$/.test(req.params.id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
+  const id = parseInt(req.params.id, 10);
   const bookmark = bookmarks.find(b => b.id === id);
   if (!bookmark) {
     return res.status(404).json(createErrorResponse(404, 'Bookmark not found', 'NOT_FOUND'));
@@ -378,10 +386,10 @@ app.get('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 }));
 
 app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
+  if (!/^\d+$/.test(req.params.id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
+  const id = parseInt(req.params.id, 10);
   const index = bookmarks.findIndex(b => b.id === id);
 
   if (index === -1) {
@@ -393,10 +401,10 @@ app.delete('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 }));
 
 app.patch('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
+  if (!/^\d+$/.test(req.params.id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
+  const id = parseInt(req.params.id, 10);
 
   const bookmark = bookmarks.find(b => b.id === id);
   if (!bookmark) {
@@ -423,10 +431,10 @@ app.patch('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
 }));
 
 app.put('/bookmarks/:id', authenticateToken, asyncHandler((req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
+  if (!/^\d+$/.test(req.params.id)) {
     return res.status(400).json(createErrorResponse(400, 'Bookmark ID must be a number', 'BAD_REQUEST'));
   }
+  const id = parseInt(req.params.id, 10);
 
   const bookmark = bookmarks.find(b => b.id === id);
   if (!bookmark) {
